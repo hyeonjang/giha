@@ -1515,7 +1515,8 @@ public:
    *
    * @param vertexPositions A vector of vertex positions
    */
-  void addVertexPositions(std::vector<std::array<double, 3>>& vertexPositions) {
+  template <typename Scalar>
+  void addVertexPositions(const std::vector<std::array<Scalar, 3>>& vertexPositions) {
 
     std::string vertexName = "vertex";
     size_t N = vertexPositions.size();
@@ -1530,9 +1531,9 @@ public:
     std::vector<double> yPos(N);
     std::vector<double> zPos(N);
     for (size_t i = 0; i < vertexPositions.size(); i++) {
-      xPos[i] = vertexPositions[i][0];
-      yPos[i] = vertexPositions[i][1];
-      zPos[i] = vertexPositions[i][2];
+      xPos[i] = static_cast<double>(vertexPositions[i][0]);
+      yPos[i] = static_cast<double>(vertexPositions[i][1]);
+      zPos[i] = static_cast<double>(vertexPositions[i][2]);
     }
 
     // Store
