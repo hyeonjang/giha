@@ -40,6 +40,24 @@ std::vector<T> readBuffer(rhi::IDevice* device, rhi::IBuffer* buffer, size_t len
     return std::vector<T>(deviceData, deviceData + gpuElementCount);
 }
 
+inline Slang::ComPtr<rhi::IBuffer> createBuffer(
+    rhi::IDevice* device, void* data, size_t byteSize
+) {
+    return device->createBuffer(
+        rhi::BufferDesc {
+            .size = byteSize,
+            .format = rhi::Format::Undefined,
+            .memoryType = rhi::MemoryType::DeviceLocal,
+            .usage = rhi::BufferUsage::ShaderResource | rhi::BufferUsage::UnorderedAccess | rhi::BufferUsage::CopySource | rhi::BufferUsage::CopyDestination,
+            .defaultState = rhi::ResourceState::UnorderedAccess,
+        }, data
+    );
+}
+
+template <typename T>
+Slang::ComPtr<rhi::IBuffer> createBuffer(rhi::IDevice* device, T* data, size_t length) { 
+    return createBuffer(device, (void*)data, length * sizeof(T)); 
+}
 } // namespace giha::slangrhi
 
 #endif // GIHA_SLANG_RHI

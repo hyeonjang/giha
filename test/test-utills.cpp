@@ -3,13 +3,13 @@
 #include <random>
 
 #include <slang-rhi.h>
+#include <slang-rhi/shader-cursor.h>
 #include <giha/slang/slang.h>
 #include <giha/slang/adapters/slang-rhi.hpp>
 
-#include "giha/slang-type.h"
-
 DECLARE_SUITE(UtillsSuite);
 using namespace giha;
+using namespace giha::slangrhi;
 
 extern Slang::ComPtr<rhi::IDevice> gDevice;
 static giha::SlangKernelCache gKernelCache;
