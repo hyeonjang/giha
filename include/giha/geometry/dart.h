@@ -1,11 +1,9 @@
-#ifndef GIHA_GEOMETRY_DART_H
-#define GIHA_GEOMETRY_DART_H
+#pragma once
 
-#include <giha/vector.h>
-#include <giha/sparse.h>
+#include <giha/linalg/vector.h>
+#include <giha/linalg/sparse.h>
 #include <vector>
 #include <unordered_map>
-#include <unordered_set>
 #include <stdexcept>
 #include <string>
 #include <algorithm>
@@ -268,4 +266,3 @@ public:
 };         
 
 } // namespace giha
-#endif // GIHA_GEOMETRY_DART_H

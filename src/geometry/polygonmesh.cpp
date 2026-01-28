@@ -1,4 +1,4 @@
-#include "giha/sparse.h"
+#include "giha/linalg/sparse.h"
 #include "giha/geometry/polygonmesh.h"
 
 #include "giha/geometry/happly.h"

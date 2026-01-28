@@ -1,14 +1,12 @@
 #pragma once
 
 #include <giha.h>
-#include <giha/sparse.h>
+#include <giha/linalg/sparse.h>
 
 #include <array>
-#include <string>
-#include <unordered_map>
 #include <vector>
-#include <memory>
-
+#include <unordered_map>
+#include <string>
 
 namespace giha {
 
