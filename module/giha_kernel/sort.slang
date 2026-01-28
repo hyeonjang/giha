@@ -1,10 +1,9 @@
 //
 // reference to https://github.com/MircoWerner/VkRadixSort
-// 
-import giha;
+//
+implementing giha_kernel;
 
 #define RADIX_SORT_BINS 256
-
 #define ITERATIONS 4
 
 //
@@ -130,11 +129,14 @@ void SortByScatter<Key: IInteger, DigitSource>
     }
 
     // scatter
-    for (uint batchId = 0; batchId < gNumBatchPerWorkGroup; batchId++) {
+    for (uint batchId = 0; batchId < gNumBatchPerWorkGroup; batchId++) 
+    {
         const uint id = workGroupSize.x * gNumBatchPerWorkGroup * workGroupId.x + workGroupSize.x * batchId + localLinearId;
 
-        if (localLinearId < RADIX_SORT_BINS) {
-            for (int i = 0; i < workGroupSize.x / 32; i++) {
+        if (localLinearId < RADIX_SORT_BINS) 
+        {
+            for (int i = 0; i < workGroupSize.x / 32; i++) 
+            {
                 bin_flags[localLinearId].flags[i] = 0U;
             }
         }
@@ -142,7 +144,8 @@ void SortByScatter<Key: IInteger, DigitSource>
 
         uint bin = 0;
         uint binOffset = 0;
-        if (id < numElements) {
+        if (id < numElements) 
+        {
 
             bin = DigitSource::extractDigit(elements[id], passIndex);
             binOffset = sharedOffsets[bin];
@@ -150,12 +153,13 @@ void SortByScatter<Key: IInteger, DigitSource>
         }
         GroupMemoryBarrierWithGroupSync();
 
-        if (id < numElements) {
-
+        if (id < numElements) 
+        {
             uint prefix = 0;
             uint count = 0;
             uint full_count = 0;
-            for (uint i = 0; i < workGroupSize.x / 32; i++) {
+            for (uint i = 0; i < workGroupSize.x / 32; i++) 
+            {
                 const uint bits = bin_flags[bin].flags[i];
                 full_count = countbits(bits);
                 const uint partial_count = countbits(bits & (flags_bit - 1));
