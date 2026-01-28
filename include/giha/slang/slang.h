@@ -1,5 +1,4 @@
-#ifndef _GIHA_SLANG_H
-#define _GIHA_SLANG_H
+#pragma once
 
 #ifdef GIHA_SLANG
 
@@ -22,9 +21,6 @@ class SpecializationArg;
 } // namespace slang
 class ISlangBlob;
 
-namespace Slang {
-template <typename T> class ComPtr;
-}
 std::string diagonize(ISlangBlob* blob);
 
 namespace giha {
@@ -54,4 +50,3 @@ void kernel(
 } // namespace giha
 // #endif
 #endif // GIHA_SLANG
-#endif // _GIHA_SLANG_H

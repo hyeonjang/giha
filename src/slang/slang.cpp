@@ -5,9 +5,11 @@
 #include <slang-com-ptr.h>
 
 #include <filesystem>
+#include <fstream>
 #include <cstdarg>
 #include <array>
 #include <vector>
+#include <iterator>
 
 // utils to process demangling the class name: I want to only remain name of class
 std::string diagonize(ISlangBlob* blob) {
@@ -19,13 +21,45 @@ std::string diagonize(ISlangBlob* blob) {
 
 namespace giha {
 
+namespace {
+std::filesystem::path project_root() {
+    static const std::filesystem::path root =
+        std::filesystem::path(__FILE__).parent_path().parent_path();
+    return root;
+}
+
+std::filesystem::path resolveModulePath(const char* moduleName) {
+    using std::filesystem::exists;
+    using std::filesystem::path;
+    using std::filesystem::canonical;
+
+    path candidate(moduleName);
+    if (exists(candidate)) { return canonical(candidate); }
+
+    path relative = project_root() / candidate;
+    if (exists(relative)) { return canonical(relative); }
+
+    throw std::runtime_error(
+        std::string("Failed to locate Slang module: ") + moduleName);
+}
+
+std::string readTextFile(const std::filesystem::path& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    CHECK(file.good(), "Failed to open module file: %s", filePath.string().c_str());
+
+    std::string data((std::istreambuf_iterator<char>(file)),
+                     std::istreambuf_iterator<char>());
+    return data;
+}
+} // namespace
+
 inline std::vector<slang::SpecializationArg> getSpecializationArgs(slang::IModule* _module, std::initializer_list<const char*> specializationArgsName) {
     std::vector<slang::SpecializationArg> specializationArgs;
     specializationArgs.reserve(specializationArgs.size());
 
     for (const auto& name : specializationArgsName) {
         auto typeReflection = _module->getLayout()->findTypeByName(name);
-        CHECK(typeReflection != nullptr, "Failed to get type reflection");
+        CHECK(typeReflection != nullptr, "Failed to get type reflection %s\n", name);
 
         specializationArgs.push_back(slang::SpecializationArg::fromType(typeReflection));
     }
@@ -47,19 +81,30 @@ inline std::vector<slang::IEntryPoint*> getEntryPoints(slang::IModule* _module, 
     return entryPoints;
 }
 
-void buildEntryPoints(
+void buildAndAppendEntryPoints(
     slang::ISession* session, 
     const SlangModuleDesc desc, 
     std::vector<slang::IComponentType*>& componentTypes
 ) {
-    
-    LOG_DEBUG("Loading module %s", desc.name);
-
     Slang::ComPtr<slang::IBlob> diagnosticBlob;
     slang::IModule* _module = session->loadModule(
         desc.name,
         diagnosticBlob.writeRef()
     );
+
+    if (!_module) {
+        auto resolvedPath = resolveModulePath(desc.name);
+        auto source = readTextFile(resolvedPath);
+
+        diagnosticBlob.setNull();
+        const std::string moduleName = resolvedPath.stem().string();
+        _module = session->loadModuleFromSourceString(
+            moduleName.c_str(),
+            resolvedPath.string().c_str(),
+            source.c_str(),
+            diagnosticBlob.writeRef()
+        );
+    }
 
     CHECK(_module, diagonize(diagnosticBlob).c_str());
     componentTypes.push_back(_module);
@@ -103,7 +148,7 @@ void kernel(
 
     std::vector<slang::IComponentType*> componentTypes;
     for (const auto& desc : descs) {
-        buildEntryPoints(session, desc, componentTypes);
+        buildAndAppendEntryPoints(session, desc, componentTypes);
     }
 
     Slang::ComPtr<slang::IBlob> diagnosticBlob;

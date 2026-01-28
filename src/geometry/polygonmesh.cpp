@@ -821,7 +821,9 @@ void PolygonMesh<T, U>::save(const std::string& path, MeshFormat hint) const
     saveMeshImpl<T, U>(*this, path, hint);
 }
 
-template PolygonMesh<float, uint32_t> PolygonMesh<float, uint32_t>::load(const std::string& path, MeshFormat hint);
-template void PolygonMesh<float, uint32_t>::save(const std::string& path, MeshFormat hint) const;
+template PolygonMesh<f32, u32> PolygonMesh<f32, u32>::load(const std::string& path, MeshFormat hint);
+template PolygonMesh<f64, u32> PolygonMesh<f64, u32>::load(const std::string& path, MeshFormat hint);
+template void PolygonMesh<f32, u32>::save(const std::string& path, MeshFormat hint) const;
+template void PolygonMesh<f64, u32>::save(const std::string& path, MeshFormat hint) const;
 
 } // namespace giha

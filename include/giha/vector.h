@@ -46,6 +46,8 @@ DECLARE_TVEC_ALIAS(i64vec4, std::int64_t, 4);
 DECLARE_TVEC_ALIAS(u32vec4, std::uint32_t, 4);
 DECLARE_TVEC_ALIAS(u64vec4, std::uint64_t, 4);
 
+#include <functional>
+
 template <typename T>
 tvec2<T> minmax(const tvec2<T>& in) {
     return in[0] > in[1] ? tvec2<T> {in[1], in[0]} : tvec2<T> { in[0], in[1] };
@@ -57,7 +59,7 @@ struct VectorHash {
     size_t operator()(const tvec<T, N>& arr) const noexcept {
         size_t seed = std::hash<T>{}(arr[0]);
         for (int i = 1; i < N; i++) {
-            mix(seed, std::hash<T>{}(arr[1]));
+            mix(seed, std::hash<T>{}(arr[i]));
         }
         return seed;
     }

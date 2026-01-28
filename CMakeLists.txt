@@ -11,6 +11,9 @@ endif()
 
 # options
 option(GIHA_SLANG "Enable slang" ON)
+option(GIHA_SLANG_RHI "Enable slang rhi code" OFF)
+option(GIHA_TEST "Build test cases" ON)
+set(GIHA_LOG_LEVEL "3" CACHE STRING "giha log verbosity: 0=silent, 3=debug")
 
 # slang library import and setting
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -63,7 +66,23 @@ if (GIHA_SLANG)
     endif()
 endif()
 
+# rendering hardware interface by slang
+# slang rhi is on development, so we always fetch the latest version, warning
+if (GIHA_SLANG_RHI)
+    message(STATUS "Fetching slang-rhi")
 
+    FetchContent_Declare(
+        slang-rhi
+        GIT_REPOSITORY
+        https://github.com/shader-slang/slang-rhi
+        GIT_TAG main
+    )
+
+    set(SLANG_RHI_FETCH_SLANG OFF CACHE BOOL "Disable slang fetch by slang-rhi" FORCE)
+    FetchContent_MakeAvailable(slang-rhi)
+endif()
+
+# source files
 set(RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 file(GLOB_RECURSE SOURCES
     CONFIGURE_DEPENDS
@@ -76,12 +95,19 @@ add_library(giha ${SOURCES})
 set(GIHA_INCLUDES)
 set(GIHA_LIBS)
 
-# slang
+# slang macro definition
 if (GIHA_SLANG)
     message(STATUS "Enable slang")
     target_compile_definitions(giha PUBLIC GIHA_SLANG=1)
     list(APPEND GIHA_INCLUDES ${SLANG_INCLUDE_DIR})
     list(APPEND GIHA_LIBS ${SLANG_LIBRARY})
+endif()
+
+if (GIHA_SLANG_RHI)
+    message(STATUS "Enable slang-rhi")
+    target_compile_definitions(giha PUBLIC GIHA_SLANG_RHI=1)
+    list(APPEND GIHA_INCLUDES slang-rhi)
+    list(APPEND GIHA_LIBS slang-rhi)
 endif()
 
 # 
@@ -96,6 +122,7 @@ target_include_directories(
 target_compile_definitions(giha PRIVATE
     $<$<CONFIG:Debug>:DEBUG_BUILD>
     $<$<CONFIG:Release>:NDEBUG>)
+target_compile_definitions(giha PUBLIC GIHA_LOG_LEVEL=${GIHA_LOG_LEVEL})
 target_link_libraries(giha PRIVATE ${GIHA_LIBS})
 target_compile_features(giha PUBLIC cxx_std_20)
 
@@ -106,4 +133,7 @@ set_target_properties(giha PROPERTIES
 #
 # test cases
 #
-add_subdirectory(test)
+if (GIHA_TEST)
+    message(STATUS "Build test cases")
+    add_subdirectory(test)
+endif()
