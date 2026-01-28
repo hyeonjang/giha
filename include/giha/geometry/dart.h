@@ -4,11 +4,13 @@
 #include <giha/vector.h>
 #include <giha/sparse.h>
 #include <vector>
-#include <set>
 #include <unordered_map>
+#include <unordered_set>
+#include <stdexcept>
+#include <string>
 #include <algorithm>
-#include <functional>
-#include <iterator>
+
+#include <iostream>
 
 // 
 // dart (halfedge) structure
@@ -28,16 +30,17 @@ namespace giha {
 
 template <typename T>
 inline std::tuple<int, int, int> findNearbyVertexIndex(T vertex, const std::span<const T>& vertexLoop) {
+    const int vertexCount = static_cast<int>(vertexLoop.size());
     int offset = 0;
-    for (int i = 0; i < vertexLoop.size(); i++) {
+    for (int i = 0; i < vertexCount; i++) {
         if (vertexLoop[i] == vertex) break;
         offset++;
     }
 
     return {
-        (offset + static_cast<int>(vertexLoop.size()) - 1) % vertexLoop.size(),
-        (offset % vertexLoop.size()),
-        (offset + 1) % vertexLoop.size()
+        (offset + vertexCount - 1) % vertexCount,
+        (offset % vertexCount),
+        (offset + 1) % vertexCount
     };
 }
 
@@ -69,21 +72,52 @@ private:
     // like inner product pattern: VF X FV
     void orderCyclicVertexFaceIncidence() {
 
-        vertexVertexAdjacency = LILSparse<U, U>(nv, nv, true);
+        vertexVertexAdjacency = LILSparse<std::vector<U>, U>(nv, nv, true);
 
         for (int tail = 0; tail < nv; tail++) {
 
             auto faces = sparse::row(vertexFaceIncidence, tail);
 
-            auto [indices, values] = orderVFCombinatorial(tail, faces);
+            auto [indices, values] = orderVFCombinatorialJagged(tail, faces);
             vertexVertexAdjacency.indices[tail] = std::move(indices);
             (*vertexVertexAdjacency.values)[tail] = std::move(values);
         }
     }
 
-    auto orderVFCombinatorial(const U tail, const std::span<const U>& faces) -> std::pair<std::vector<U>, std::vector<U>> {
+    auto orderVFCombinatorialJagged(const U tail, const std::span<const U>& faces) -> std::pair<std::vector<U>, std::vector<std::vector<U>>> {
+        auto vertexOrdered = orderVFCombinatorial(tail, faces);
 
-        std::list<std::pair<U, U>> vertexIdOrdered;
+        std::pair<std::vector<U>, std::vector<std::vector<U>>> result;
+        result.first.reserve(vertexOrdered.size());
+        result.second.reserve(vertexOrdered.size());
+
+        for (auto& [vertex, faceIds] : vertexOrdered) {
+            result.first.emplace_back(vertex);
+            result.second.emplace_back(std::move(faceIds));
+        }
+        return result;
+    }
+
+    auto orderVFCombinatorialFlatten(const U tail, const std::span<const U>& faces) -> std::pair<std::vector<U>, std::vector<U>> {
+        auto vertexOrdered = orderVFCombinatorial(tail, faces);
+
+        std::pair<std::vector<U>, std::vector<std::vector<U>>> result;
+        result.first.reserve(vertexOrdered.size());
+        result.second.reserve(vertexOrdered.size());
+
+        for (auto& [vertex, faceIds] : vertexOrdered) {
+            for (auto& faceId : faceIds) {
+                result.first.emplace_back(vertex);
+                result.second.emplace_back(std::move(faceId));
+            } 
+        }
+        return result;
+    }
+
+    // resolve more than 2 incidence case, what the hell.
+    auto orderVFCombinatorial(const U tail, const std::span<const U>& faces) -> std::list<std::pair<U, std::vector<U>>> {
+
+        std::list<std::pair<U, std::vector<U>>> vertexIdOrdered;
         for (const auto faceId : faces) {
 
             const auto& vertexLoop = sparse::row(faceVertexIncidence, faceId);
@@ -92,53 +126,60 @@ private:
             
             // find
             const auto iterPrev = std::find_if(vertexIdOrdered.begin(), vertexIdOrdered.end(), 
-                [&prev](const std::pair<U, U>& pair) { return pair.first == prev; }
+                [&prev](const std::pair<U, std::vector<U>>& pair) { return pair.first == prev; }
             );
             
             const auto iterNext = std::find_if(vertexIdOrdered.begin(), vertexIdOrdered.end(), 
-                [&next](const std::pair<U, U>& pair) { return pair.first == next; }
+                [&next](const std::pair<U, std::vector<U>>& pair) { return pair.first == next; }
             );
 
             // insertion cases
             // 1. there is no insertion
             if (iterPrev == vertexIdOrdered.end() && iterNext == vertexIdOrdered.end()) {
-                printf("%d: %d %d\n", curr, prev, next);
-                vertexIdOrdered.insert(vertexIdOrdered.end(), {{prev, faceId}, {next, faceId}});
+                vertexIdOrdered.insert(vertexIdOrdered.end(), {{prev, std::vector<U>(1, faceId)}, {next, std::vector<U>(1, faceId)}});
             }
-            // 2. find prev and attach next after prev 
+            // 2. find prev and attach next after prev
             else if (iterPrev != vertexIdOrdered.end() && iterNext == vertexIdOrdered.end()) {
-                vertexIdOrdered.insert(std::next(iterPrev), {next, faceId});
+                iterPrev->second.push_back(faceId);
+                vertexIdOrdered.insert(std::next(iterPrev), {next, std::vector<U>(1, faceId)});
             }
             // 3. find next and attach prev before next
             else if (iterPrev == vertexIdOrdered.end() && iterNext != vertexIdOrdered.end()) {
-                vertexIdOrdered.insert(iterNext, {prev, faceId});
+                iterNext->second.push_back(faceId);
+                vertexIdOrdered.insert(iterNext, {prev, std::vector<U>(1, faceId)});
             }
-            // 4. dealing with non-manifold type edges
-            else {
-                vertexIdOrdered.insert(vertexIdOrdered.end(), {{prev, faceId}, {next, faceId}});
+            // 4. dealing
+            else if (iterPrev != vertexIdOrdered.end() && iterNext != vertexIdOrdered.end()) {
+                auto insertPos = std::next(iterPrev);
+
+                if (iterNext != insertPos) {
+                    vertexIdOrdered.splice(insertPos, vertexIdOrdered, iterNext);
+                    iterPrev->second.push_back(faceId);
+                    iterNext->second.push_back(faceId);
+                } else {
+                    printf("non manifold\n");
+                }
             }
         }
 
-        printf("tail %d: ", tail);
-        std::vector<U> indices;
-        std::vector<U> values;
-        indices.reserve(vertexIdOrdered.size()); 
-        values.reserve(vertexIdOrdered.size());
-        
-        for (const auto order : vertexIdOrdered) {
-            printf("(%d, %d) ", order.first, order.second);
-            indices.push_back(order.first);
-            values.push_back(order.second);
-        }
-        printf("\n");
-        return { std::move(indices), std::move(values) };
+        // for (auto& [vertex, faceIds] : vertexIdOrdered) {
+        //     printf("%d: (", vertex);
+        //     for (auto& faceId : faceIds) {
+        //         printf("%d ", faceId);
+        //     }
+        //     printf(")");
+        // }
+        // printf("\n");
+        // }
+
+        return vertexIdOrdered;
     }
 
 public:
     size_t nv, nf;
     const SparseVariant<T, U>& faceVertexIncidence;
     SparseVariant<T, U> vertexFaceIncidence;
-    LILSparse<U, U> vertexVertexAdjacency;
+    LILSparse<std::vector<U>, U> vertexVertexAdjacency;
 };
 
 //
@@ -153,7 +194,7 @@ struct DartMap {
 
     // denormalization form from vertex adjacency by cyclic order
     template <typename T>
-    static DartMap<Id, Key> fromVertexVertexAdjacency(
+    static DartMap<Id, Key> fromVertexVertexAdjacnecy(
         const LILSparse<T, Id>& vertexVertexAdjacency
     ) {
         return fromVertexVertexAdjacency(sparse::toCSR(vertexVertexAdjacency));
@@ -161,7 +202,14 @@ struct DartMap {
 
     template <typename T>
     static DartMap<Id, Key> fromVertexVertexAdjacency(
-        const CSRSparse<T, Id>& vertexVertexAdjacency
+        const LILSparse<std::vector<T>, Id>& vertexVertexAdjacency
+    ) {
+        return fromVertexVertexAdjacency(sparse::toCSR(vertexVertexAdjacency));
+    }
+
+    template <typename T>
+    static DartMap<Id, Key> fromVertexVertexAdjacency(
+        const CSRSparse<std::vector<T>, Id>& vertexVertexAdjacency
     ) {
         using EdgeKey = tvec2<Id>;
 
@@ -180,18 +228,18 @@ struct DartMap {
 
             if (degree == 0) continue;
 
-            for (Id dartId = start; dartId < end; ++dartId) {
-                // head vertex (column index)
-                const Key head = static_cast<Key>(vertexVertexAdjacency.colIdx[dartId]);
+            for (Id curr = start; curr < end; ++curr) {
+                Id next = start + ((curr - start + 1) % degree);
 
                 // σ: next dart around the vertex (row order already encodes CCW)
-                const Id local = dartId - start;
-                map.vNext[dartId] = start + ((local + 1) % degree);
-                map.vKeys[dartId] = tail;
+                map.vNext[curr] = next;
+                map.vKeys[curr] = tail;
+                // map.eNext[curr] 
 
                 // bucket by undirected pair {tail, head}
+                const Key head = static_cast<Key>(vertexVertexAdjacency.colIdx[curr]);
                 auto mm = std::minmax(tail, head);
-                edgeMap[EdgeKey{static_cast<Id>(mm.first), static_cast<Id>(mm.second)}].push_back(dartId);
+                edgeMap[EdgeKey{static_cast<Id>(mm.first), static_cast<Id>(mm.second)}].push_back(curr);
             }
         }
 
@@ -205,9 +253,6 @@ struct DartMap {
                 map.eNext[dartIds[i]] = dartIds[(i + 1) % k];
             }
         }
-
-        printf("%d\n", vertexVertexAdjacency.nnz);
-
         return std::move(map);
     }
 
