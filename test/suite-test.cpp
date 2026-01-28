@@ -1,14 +1,11 @@
 #include "suite-test.hpp"
-
-
-
 #include <slang-rhi.h>
 
 extern const std::string gFilePath = __FILE__;
 extern const std::string gTestPath = gFilePath.substr(0, gFilePath.rfind("\\"));
 
 extern TestRegistry GeometrySuite;
-extern TestRegistry UtilsSuite;
+extern TestRegistry UtillsSuite;
 
 Slang::ComPtr<rhi::IDevice> gDevice;
 
@@ -32,8 +29,8 @@ int main() {
 
     gDevice = rhi::getRHI()->createDevice(deviceDesc);
 
-    // if (RUN_SUITE(GeometrySuite) != EXIT_SUCCESS) return EXIT_FAILURE;
-    if (RUN_SUITE(UtilsSuite) != EXIT_SUCCESS) return EXIT_FAILURE;
+    // if (RUN_SUITE(UtillsSuite) != EXIT_SUCCESS) return EXIT_FAILURE;
+    if (RUN_SUITE(GeometrySuite) != EXIT_SUCCESS) return EXIT_FAILURE;
 
     std::cout << "All suites passed.\n";
     return EXIT_SUCCESS;
