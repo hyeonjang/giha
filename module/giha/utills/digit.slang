@@ -35,4 +35,5 @@ public struct VectorRadixDigitSource<I : IInteger, int N> : IRadixDigitSource<ve
     }
 }
 
-typealias UIntRadixDigitSource = ScalarRadixDigitSource<uint>;
+typealias U32RadixDigitSource = ScalarRadixDigitSource<uint32_t>;
+typealias U64RadixDigitSource = ScalarRadixDigitSource<uint64_t>;
