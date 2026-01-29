@@ -1,7 +1,7 @@
 implementing giha_kernel;
 
 // subdivision test purpose
-// : only care about topology
+// : no boundary consideration
 [shader("compute")]
 [numthreads(WORKGROUP_SIZE, 1, 1)]
 void LoopSubdivide<I : IInteger, Scalar : __BuiltinFloatingPointType>(
@@ -17,9 +17,12 @@ void LoopSubdivide<I : IInteger, Scalar : __BuiltinFloatingPointType>(
     I d0 = I(gid.x);
 
     // 1. store for later use
-    I df1 = extrinsic.model.nextFace(d0);  // next face
-    I df2 = extrinsic.model.nextFace(df1); // next-next face
+    I df1 = extrinsic.model.nextFace(d0); // next face
     I de1 = extrinsic.model.nextEdge(d0);  // twin edge
+
+    // 1-1. for reposition calculation
+    I df2 = extrinsic.model.nextFace(df1); // next-next face
+    I de1f2 = extrinsic.model.nextFace(extrinsic.model.nextFace(de1));
 
     // new vertex postiion
     // some interpolation
@@ -37,18 +40,12 @@ void LoopSubdivide<I : IInteger, Scalar : __BuiltinFloatingPointType>(
     extrinsic.model.insertNewDartOnVert(dv0, dv1);
     GroupMemoryBarrierWithGroupSync();
 
-    // 3. connect to other edge on faces
+    // 3. connect to other edge on faces, consistent within triangle
     // 3-1. next face
     I df1e0 = extrinsic.model.nextEdge(df1);
     I df1e0v0 = extrinsic.model.nextVert(df1e0);
     extrinsic.model.edgeNext[df1e0v0.toInt()] = dv1;
     extrinsic.model.edgeNext[dv1.toInt()] = df1e0v0;
-
-    // 3-2. next-next face
-    I df2e0 = extrinsic.model.nextEdge(df2);
-    I df2e0v1 = extrinsic.model.nextVert(df2e0);
-    extrinsic.model.edgeNext[df2e0v1.toInt()] = dv0;
-    extrinsic.model.edgeNext[dv0.toInt()] = df2e0v1;
 
     // 4. select thread to assign extrinsic key
     if (d0 > de1) return;
@@ -56,17 +53,25 @@ void LoopSubdivide<I : IInteger, Scalar : __BuiltinFloatingPointType>(
     I de1e0v0 = extrinsic.model.nextVert(de1e0);
     I de1e0v1 = extrinsic.model.nextVert(de1e0v0);
 
+    // 5. position a new vertex on edge
     uint newKey = extrinsic.counter[0].increment();
     extrinsic.model.assignExtrinsic(de0, newKey);
     extrinsic.model.assignExtrinsic(dv0, newKey);
     extrinsic.model.assignExtrinsic(dv1, newKey);
+
+    // 5-1. mirror side
     extrinsic.model.assignExtrinsic(de1e0, newKey);
     extrinsic.model.assignExtrinsic(de1e0v0, newKey);
     extrinsic.model.assignExtrinsic(de1e0v1, newKey);
 
-    extrinsic.vertexPositions[newKey] = lerp(
-        extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(d0)],
-        extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(de1)],
-        Scalar(0.5)
-    );
+    var mid0 = extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(d0)] + extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(de1)];
+    var mid1 = extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(df2)] + extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(de1f2)];
+
+    mid0 = mid0 * Scalar(3.0) / Scalar(8.0);
+    mid1 = mid1 / Scalar(8.0);
+
+    extrinsic.vertexPositions[newKey] = mid0 + mid1;
+    
+    // 6. reposition old vertex
+
 }

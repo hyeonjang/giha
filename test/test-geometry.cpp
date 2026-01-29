@@ -5,6 +5,9 @@
 #include <giha/slang/slang.h>
 #include <giha/slang/adapters/slang-rhi.hpp>
 #include <giha/geometry/adapters/slang-rhi/kernel.h>
+#include <giha/geometry/happly.h>
+
+#include <array>
 
 #include "giha/geometry-assets.h"
 
@@ -17,6 +20,50 @@ static giha::SlangKernelCache gKernelCache;
 extern const std::string gTestPath;
 
 using Scalar = f32;
+using Id = u32;
+
+namespace {
+
+void writeSubdividedMeshToPly(
+    const std::string& path,
+    const std::vector<Scalar>& vertexCoords,
+    const std::vector<u32>& faceOffsets,
+    const std::vector<u32>& faceIndices
+) {
+    if (vertexCoords.empty()) {
+        printf("Skip writing %s: no vertices\n", path.c_str());
+        return;
+    }
+
+    const size_t vertexCount = vertexCoords.size() / 3;
+    std::vector<std::array<double, 3>> positions(vertexCount);
+    for (size_t i = 0; i < vertexCount; ++i) {
+        positions[i][0] = static_cast<double>(vertexCoords[i * 3 + 0]);
+        positions[i][1] = static_cast<double>(vertexCoords[i * 3 + 1]);
+        positions[i][2] = static_cast<double>(vertexCoords[i * 3 + 2]);
+    }
+
+    std::vector<std::vector<u32>> faces;
+    if (faceOffsets.size() > 1) {
+        faces.reserve(faceOffsets.size() - 1);
+        for (size_t faceIndex = 0; faceIndex + 1 < faceOffsets.size(); ++faceIndex) {
+            const u32 start = faceOffsets[faceIndex];
+            const u32 end = faceOffsets[faceIndex + 1];
+            if (end <= start || end > faceIndices.size()) { continue; }
+            faces.emplace_back(faceIndices.begin() + start, faceIndices.begin() + end);
+        }
+    }
+
+    happly::PLYData plyOut;
+    plyOut.addVertexPositions(positions);
+    if (!faces.empty()) {
+        plyOut.addFaceIndices(faces);
+    }
+    plyOut.write(path, happly::DataFormat::ASCII);
+    printf("Wrote subdivided mesh to %s (%zu vertices, %zu faces)\n", path.c_str(), positions.size(), faces.size());
+}
+
+} // namespace
 
 // 0. prepare slang session && @@todo loading test model
 TEST_IN(GeometrySuite, PrepareGeometrySession) {
@@ -68,7 +115,8 @@ TEST_IN(GeometrySuite, Triangulate) {
     using VertexIdType = u32;
 
     // prepare uniform buffer
-    FaceOrbitParam orbitParam(gDevice, map);
+    SigmaModel model(gDevice, map);
+    FaceOrbitParam orbitParam(gDevice, model);
 
     // prepare to launch
     auto kernels = slangrhi::makeComputeKernels(gDevice, gKernelCache.kernels({
@@ -89,12 +137,10 @@ TEST_IN(GeometrySuite, Triangulate) {
         computePass->end();
         CHECK_SLANG(queue->submit(encoder->finish()), "Failed to submit command buffer\n");
     }
-    printf("triangulation done\n");
 
     // check results
     {
         std::vector<u32> outFaceCount = slangrhi::readBuffer<u32>(gDevice, orbitParam.orbitCounter, 1);
-        printf("face count: %u\n", outFaceCount[0]);
         std::vector<u32> outFaceOffset = slangrhi::readBuffer<u32>(gDevice, orbitParam.indices, outFaceCount[0] + 1);
         std::vector<u32> outFaceVertexList = slangrhi::readBuffer<u32>(gDevice, orbitParam.values, outFaceOffset.back());
 
@@ -177,48 +223,66 @@ TEST_IN(GeometrySuite, BuildGeometryQuantities) {
     }
 }
 
-// TEST_IN(GeometrySuite, LoopSubdivide) {
+TEST_IN(GeometrySuite, LoopSubdivide) {
 
-//     using Scalar = f32;
+    const std::string path = gTestPath + "/resource/tetrahedron.ply";
+    const auto& polymesh = gGeometryAssets.mesh<Scalar, u32>(path);
+    const auto& map = gGeometryAssets.dartMap<Scalar, u32>(path);
 
-//     const std::string path = gTestPath + "/resource/tetrahedron.ply";
-//     const auto& polymesh = gGeometryAssets.mesh<Scalar, u32>(path);
-//     const auto& map = gGeometryAssets.dartMap<Scalar, u32>(path);
+    SigmaModel dart(gDevice, map, 36); // @@todo padding for new darts
+    ExtrinsicGeometry extrinsic(gDevice, dart, (Scalar*)polymesh.vertexCoordinates.data(), polymesh.vertexCoordinates.size(), 4);
+    FaceOrbitParam orbitParam(gDevice, dart);
 
-//     MutableSigmaModel dart(gDevice, map, 100); // @@todo padding for new darts
-//     MutableExtrinsicGeometry extrinsic(gDevice, dart, (Scalar*)polymesh.vertexCoordinates.data(), polymesh.vertexCoordinates.size());
+    auto kernels = slangrhi::makeComputeKernels(gDevice, gKernelCache.kernels({
+        { "module/giha_kernel.slang", { { "LoopSubdivide", { "uint", "float" } } } },
+        { "module/giha_kernel.slang", { { "FaceOrbit", { "uint", "float" } } } },
+    })) ;
 
-//     auto kernels = slangrhi::makeComputeKernels(gDevice, gKernelCache.kernels({
-//         { "module/giha_kernel.slang", { { "LoopSubdivide", { "uint", "float" } } } },
-//         { "module/giha_kernel.slang", { { "FaceOrbit", { "uint", "float" } } } },
-//     })) ;
+    auto queue = gDevice->getQueue(rhi::QueueType::Graphics);
+    auto encoder = queue->createCommandEncoder();
 
-//     printf("somme\n");
-//     auto queue = gDevice->getQueue(rhi::QueueType::Graphics);
-//     auto encoder = queue->createCommandEncoder();
+    auto computePass = encoder->beginComputePass();
+    {
+        // loop subdivide
+        auto subdivide = computePass->bindPipeline(kernels[0].pipeline);
+        rhi::ShaderCursor subdivideParam(subdivide->getEntryPoint(0));
+        extrinsic.writeInto(subdivideParam.getPath("extrinsic"));
+        computePass->dispatchCompute(map.count(), 1, 1);
 
-//     auto computePass = encoder->beginComputePass();
+        // face orbit
+        auto orbit = computePass->bindPipeline(kernels[1].pipeline);
+        rhi::ShaderCursor orbitCursor(orbit->getEntryPoint(0));
+        orbitParam.writeInto(orbitCursor.getPath("param"));
+        // computePass->dispatchComputeIndirect(dart.counter);
+        computePass->dispatchCompute(48, 1, 1);
+    }
+    computePass->end();
+    CHECK_SLANG(queue->submit(encoder->finish()), "Failed to submit command buffer\n");
+    printf("Submitted\n");
 
-//     // loop subdivide
-//     {
-//         auto subdivide = computePass->bindPipeline(kernels[0].pipeline);
-//         rhi::ShaderCursor subdivideParam(subdivide->getEntryPoint(0));
-//         extrinsic.writeInto(subdivideParam.getPath("extrinsic"));
-//         computePass->dispatchCompute(map.count(), 1, 1);
-//         computePass->end();
-//     }
+    std::vector<u32> dartCounter = slangrhi::readBuffer<u32>(gDevice, dart.counter, 1);
+    printf("Dart count after subdivision: %u\n", dartCounter[0]);
 
-//     // face orbit
-//     {
-//         auto orbit = computePass->bindPipeline(kernels[1].pipeline);
-//         rhi::ShaderCursor orbitParam(orbit->getEntryPoint(0));
+    std::vector<u32> dartVertNext = slangrhi::readBuffer<u32>(gDevice, dart.vertNext, dartCounter[0]);
+    for (u32 i = 0; i < dartCounter[0]; ++i) {
+        printf("Dart %u -> Vertex %u\n", i, dartVertNext[i]);
+    }
 
-//         dart.writeInto(orbitParam.getPath("param").getPath("model"));
-//         computePass->dispatchCompute(map.count(), 1, 1);
-//         computePass->end();
-//     }
-//     CHECK_SLANG(queue->submit(encoder->finish()), "Failed to submit command buffer\n");
+    std::vector<u32> dartEdgeNext = slangrhi::readBuffer<u32>(gDevice, dart.edgeNext, dartCounter[0]);
+    for (u32 i = 0; i < dartCounter[0]; ++i) {
+        printf("Dart %u -> Twin Dart %u\n", i, dartEdgeNext[i]);
+    }
 
-//     std::vector<u32> outFaceCount = slangrhi::readBuffer<u32>(gDevice, extrinsic.counter, 1);
-//     printf("Subdivided face count: %u\n", outFaceCount[0]);
-// }
+
+    std::vector<u32> outFaceCount = slangrhi::readBuffer<u32>(gDevice, orbitParam.orbitCounter, 1);
+    printf("Face count: %u\n", outFaceCount[0]);
+    std::vector<u32> outFaceOffset = slangrhi::readBuffer<u32>(gDevice, orbitParam.indices, outFaceCount[0] + 1);
+    std::vector<u32> outFaceVertexList = slangrhi::readBuffer<u32>(gDevice, orbitParam.values, outFaceOffset.back());
+
+    std::vector<u32> outVertexCount = slangrhi::readBuffer<u32>(gDevice, extrinsic.counter, 1);
+    printf("Vertex count: %u\n", outVertexCount[0]);
+    std::vector<Scalar> outVertexCoordinates = slangrhi::readBuffer<f32>(gDevice, extrinsic.vertexPositions, outVertexCount[0] * 3);
+
+    const std::string outPath = gTestPath + "/resource/triangle_subdivided.ply";
+    writeSubdividedMeshToPly("triangulate.ply", outVertexCoordinates, outFaceOffset, outFaceVertexList);
+}
