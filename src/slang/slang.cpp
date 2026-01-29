@@ -24,7 +24,7 @@ namespace giha {
 namespace {
 std::filesystem::path project_root() {
     static const std::filesystem::path root =
-        std::filesystem::path(__FILE__).parent_path().parent_path();
+        std::filesystem::path(__FILE__).parent_path().parent_path().parent_path();
     return root;
 }
 
