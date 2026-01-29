@@ -19,6 +19,11 @@ struct SigmaModel {
     template <typename Id, typename Key>
     SigmaModel(rhi::IDevice* device, const giha::DartMap<Id, Key>& map, uint32_t padd = 0) {
         cpuCounter = static_cast<uint32_t>(map.count());
+        idSize = sizeof(Id);
+        keySize = sizeof(Key);
+
+        printf("s %d\n", map.vNext.size() + padd);
+
         counter = createBuffer(device, &cpuCounter, 1);
         vertNext = createBuffer(device, map.vNext.data(), map.vNext.size() + padd);
         edgeNext = createBuffer(device, map.eNext.data(), map.eNext.size() + padd);
@@ -26,13 +31,25 @@ struct SigmaModel {
     }
 
     void writeInto(rhi::ShaderCursor cursor) const {
-        cursor.getPath("counter").setBinding(counter);
-        cursor.getPath("vertNext").setBinding(vertNext);
-        cursor.getPath("edgeNext").setBinding(edgeNext);
-        cursor.getPath("extrinsicKey").setBinding(extrinsicKey);
+        auto counterCursor = cursor.getPath("counter");
+        CHECK(counterCursor.isValid(), "Missing SigmaModel.counter");
+        CHECK_SLANG(counterCursor.setBinding(counter), "Failed to bind counter");
+
+        auto vertCursor = cursor.getPath("vertNext");
+        CHECK(vertCursor.isValid(), "Missing SigmaModel.vertNext");
+        CHECK_SLANG(vertCursor.setBinding(vertNext), "Failed to bind vertNext");
+
+        auto edgeCursor = cursor.getPath("edgeNext");
+        CHECK(edgeCursor.isValid(), "Missing SigmaModel.edgeNext");
+        CHECK_SLANG(edgeCursor.setBinding(edgeNext), "Failed to bind edgeNext");
+
+        auto keyCursor = cursor.getPath("extrinsicKey");
+        CHECK(keyCursor.isValid(), "Missing SigmaModel.extrinsicKey");
+        CHECK_SLANG(keyCursor.setBinding(extrinsicKey), "Failed to bind extrinsicKey");
     }
 
-public:
+    size_t idSize, keySize;
+
     uint32_t cpuCounter;
     Slang::ComPtr<rhi::IBuffer> counter;
     Slang::ComPtr<rhi::IBuffer> vertNext;
@@ -46,17 +63,25 @@ public:
 struct ExtrinsicGeometry {
 
     template <typename T>
-    ExtrinsicGeometry(rhi::IDevice* device, const SigmaModel& _model, T* posData, size_t posLength)
+    ExtrinsicGeometry(rhi::IDevice* device, const SigmaModel& _model, T* posData, size_t posLength, size_t padd = 0)
     : model(_model) {
         cpuCounter = posLength;
         counter = createBuffer(device, &cpuCounter, 1);
-        vertexPositions = createBuffer(device, posData, sizeof(T)*posLength);
+        vertexPositions = createBuffer(device, posData, sizeof(T) * (posLength + padd));
     }
 
     void writeInto(rhi::ShaderCursor cursor) const {
-        model.writeInto(cursor.getPath("model"));
-        cursor.getPath("counter").setBinding(counter);
-        cursor.getPath("vertexPositions").setBinding(vertexPositions);
+        auto modelCursor = cursor.getPath("model");
+        CHECK(modelCursor.isValid(), "Missing ExtrinsicGeometry.model");
+        model.writeInto(modelCursor);
+
+        auto counterCursor = cursor.getPath("counter");
+        CHECK(counterCursor.isValid(), "Missing ExtrinsicGeometry.counter");
+        CHECK_SLANG(counterCursor.setBinding(counter), "Failed to bind counter");
+
+        auto positionsCursor = cursor.getPath("vertexPositions");
+        CHECK(positionsCursor.isValid(), "Missing ExtrinsicGeometry.vertexPositions");
+        CHECK_SLANG(positionsCursor.setBinding(vertexPositions), "Failed to bind vertex positions");
     }
 
 public:
@@ -75,8 +100,13 @@ struct IntrinsicGeometry {
     }
 
     void writeInto(rhi::ShaderCursor cursor) const {
-        model.writeInto(cursor.getPath("model"));
-        cursor.getPath("dartLengths").setBinding(dartLengths);
+        auto modelCursor = cursor.getPath("model");
+        CHECK(modelCursor.isValid(), "Missing IntrinsicGeometry.model");
+        model.writeInto(modelCursor);
+
+        auto dartCursor = cursor.getPath("dartLengths");
+        CHECK(dartCursor.isValid(), "Missing IntrinsicGeometry.dartLengths");
+        CHECK_SLANG(dartCursor.setBinding(dartLengths), "Failed to bind dart lengths");
     }
 
 public:

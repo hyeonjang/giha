@@ -156,15 +156,14 @@ public struct CollectHandler<I : IInteger> : IOrbitHandler<I>
 
 public struct SigmaModel<I: IInteger, K: IArithmetic>
 {
-    // public uint count;
-    uint counter;
+    StructuredBuffer<uint> counter;
     StructuredBuffer<I> vertNext; // \sigma, v-orbit: vertex rotation, CCW by combinatorial
     StructuredBuffer<I> edgeNext; // \alpha, e-orbit: edge rotation, CCW
     StructuredBuffer<K> extrinsicKey;
 
     // map to extrinsic
     public K mapToExtrinsic(I i0) { return extrinsicKey[i0.toInt()]; }
-    public uint count() { return counter; }
+    public uint count() { return counter[0]; }
 
     //
     // query

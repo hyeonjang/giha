@@ -22,27 +22,35 @@ struct PrimitiveOrbitParam {
     Slang::ComPtr<rhi::IBuffer> values;
 
     PrimitiveOrbitParam() = default;
-
-    template <typename Id, typename Key>
-    PrimitiveOrbitParam(rhi::IDevice* device, const DartMap<Id, Key>& map) 
-    : model(device, map) {
-        Id cpuCounter = 0;
-        orbitCounter = createBuffer(device, &cpuCounter, 1);
-        offsetCounter = createBuffer(device, &cpuCounter, 1);
-
-        std::vector<Id> zeroData(MaxLoop * map.count(), 0);
-        indices = createBuffer(device, zeroData.data(), MaxLoop * map.count());
-        values = createBuffer(device, zeroData.data(), MaxLoop * map.count());
-        // indices = createBuffer(device, (Id*)nullptr, MaxLoop * model.cpuCounter);
-        // values = createBuffer(device, (Id*)nullptr, MaxLoop * model.cpuCounter);
+    PrimitiveOrbitParam(rhi::IDevice* device, const SigmaModel& model)
+    : model(model) {
+        uint32_t zero = 0;
+        orbitCounter = createBuffer(device, &zero, sizeof(uint32_t));
+        offsetCounter = createBuffer(device, &zero, sizeof(uint32_t));
+        indices = createBuffer(device, nullptr, sizeof(uint32_t) * MaxLoop * model.cpuCounter);
+        values = createBuffer(device,  nullptr, sizeof(model.keySize) * MaxLoop * model.cpuCounter);
     }
 
     void writeInto(rhi::ShaderCursor cursor) const {
-        model.writeInto(cursor.getPath("model"));
-        cursor.getPath("orbitCounter").setBinding(orbitCounter);
-        cursor.getPath("offsetCounter").setBinding(offsetCounter);
-        cursor.getPath("indices").setBinding(indices);
-        cursor.getPath("values").setBinding(values);
+        auto modelCursor = cursor.getPath("model");
+        CHECK(modelCursor.isValid(), "Missing PrimitiveOrbitParam.model");
+        model.writeInto(modelCursor);
+
+        auto orbitCursor = cursor.getPath("orbitCounter");
+        CHECK(orbitCursor.isValid(), "Missing PrimitiveOrbitParam.orbitCounter");
+        CHECK_SLANG(orbitCursor.setBinding(orbitCounter), "Failed to bind orbitCounter");
+
+        auto offsetCursor = cursor.getPath("offsetCounter");
+        CHECK(offsetCursor.isValid(), "Missing PrimitiveOrbitParam.offsetCounter");
+        CHECK_SLANG(offsetCursor.setBinding(offsetCounter), "Failed to bind offsetCounter");
+
+        auto indicesCursor = cursor.getPath("indices");
+        CHECK(indicesCursor.isValid(), "Missing PrimitiveOrbitParam.indices");
+        CHECK_SLANG(indicesCursor.setBinding(indices), "Failed to bind indices");
+
+        auto valuesCursor = cursor.getPath("values");
+        CHECK(valuesCursor.isValid(), "Missing PrimitiveOrbitParam.values");
+        CHECK_SLANG(valuesCursor.setBinding(values), "Failed to bind values");
     }
 };
 
