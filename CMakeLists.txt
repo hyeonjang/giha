@@ -12,7 +12,7 @@ endif()
 # options
 option(GIHA_SLANG "Enable slang" ON)
 option(GIHA_SLANG_RHI "Enable slang rhi code" OFF)
-option(GIHA_TEST "Build test cases" ON)
+option(GIHA_TEST "Build test cases" OFF)
 set(GIHA_LOG_LEVEL "3" CACHE STRING "giha log verbosity: 0=silent, 3=debug")
 
 # slang library import and setting
@@ -34,12 +34,12 @@ if (GIHA_SLANG)
         ASSET_TEMPLATE "slang-{version}-{system}.zip"
     )
 
-    # add_library(slang SHARED IMPORTED GLOBAL)                                                                                               
-    # set_target_properties(slang PROPERTIES                                                                                                  
-    #     INTERFACE_INCLUDE_DIRECTORIES "${SLANG_DIR}/include"                                                                               
-    #     IMPORTED_IMPLIB "${SLANG_DIR}/lib/slang.lib"                                                                                       
-    #     IMPORTED_LOCATION "${SLANG_DIR}/bin/slang.dll"
-    # )   
+    add_library(slang SHARED IMPORTED GLOBAL)                                                                                               
+    set_target_properties(slang PROPERTIES                                                                                                  
+        INTERFACE_INCLUDE_DIRECTORIES "${SLANG_DIR}/include"                                                                               
+        IMPORTED_IMPLIB "${SLANG_DIR}/lib/slang.lib"                                                                                       
+        IMPORTED_LOCATION "${SLANG_DIR}/bin/slang.dll"
+    )   
 
     find_path(SLANG_INCLUDE_DIR 
         NAMES slang.h 
@@ -78,8 +78,17 @@ if (GIHA_SLANG_RHI)
         GIT_TAG main
     )
 
-    set(SLANG_RHI_FETCH_SLANG OFF CACHE BOOL "Disable slang fetch by slang-rhi" FORCE)
+    set(SLANG_RHI_FETCH_SLANG OFF CACHE BOOL "" FORCE)                                                                                                                                                                                                                             
+    set(SLANG_RHI_BUILD_FROM_SLANG_REPO ON CACHE BOOL "" FORCE)                                                                                                                                                                                                                    
+    set(SLANG_RHI_SLANG_INCLUDE_DIR "${SLANG_DIR}/include" CACHE STRING "" FORCE)                                                                                                                                                                                                  
+    set(SLANG_RHI_SLANG_BINARY_DIR "${SLANG_DIR}" CACHE STRING "" FORCE)    
+
+    # set(SLANG_RHI_FETCH_SLANG OFF CACHE BOOL "Disable slang fetch by slang-rhi" FORCE)
     FetchContent_MakeAvailable(slang-rhi)
+    set_target_properties(slang-rhi PROPERTIES
+        CXX_STANDARD 17
+        CXX_STANDARD_REQUIRED ON
+    )
 endif()
 
 # source files
@@ -106,7 +115,6 @@ endif()
 if (GIHA_SLANG_RHI)
     message(STATUS "Enable slang-rhi")
     target_compile_definitions(giha PUBLIC GIHA_SLANG_RHI=1)
-    list(APPEND GIHA_INCLUDES slang-rhi)
     list(APPEND GIHA_LIBS slang-rhi)
 endif()
 
@@ -123,7 +131,7 @@ target_compile_definitions(giha PRIVATE
     $<$<CONFIG:Debug>:DEBUG_BUILD>
     $<$<CONFIG:Release>:NDEBUG>)
 target_compile_definitions(giha PUBLIC GIHA_LOG_LEVEL=${GIHA_LOG_LEVEL})
-target_link_libraries(giha PRIVATE ${GIHA_LIBS})
+target_link_libraries(giha PUBLIC ${GIHA_LIBS})
 target_compile_features(giha PUBLIC cxx_std_20)
 
 set_target_properties(giha PROPERTIES                                                                                                 
@@ -134,6 +142,5 @@ set_target_properties(giha PROPERTIES
 # test cases
 #
 if (GIHA_TEST)
-    message(STATUS "Build test cases")
     add_subdirectory(test)
 endif()
