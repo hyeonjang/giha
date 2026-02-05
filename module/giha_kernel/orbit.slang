@@ -2,7 +2,7 @@ implementing giha_kernel;
 
 struct PrimiviteOrbitParam<I : IInteger, K : IArithmetic>
 {
-    SigmaModel<I, K> model;
+    SigmaModel<I, K, StructuredBuffer<I>, StructuredBuffer<K>> model;
     RWStructuredBuffer<Atomic<uint>> orbitCounter;
     RWStructuredBuffer<Atomic<uint>> offsetCounter;
     RWStructuredBuffer<uint> indices;
@@ -27,7 +27,7 @@ void VertexOrbit<I : IInteger, K : IArithmetic>(
     for (int localID = 0; localID < collect.count(); ++localID)
     {
         var orbitDartID = collect.get(localID);
-        param.values[base + localID] = param.model.mapToExtrinsic(orbitDartID);
+        param.values[base + localID] = param.model.mapToVertexKey(orbitDartID);
     }
 }
 
@@ -48,7 +48,7 @@ void EdgeOrbit<I : IInteger, K : IArithmetic>(
     for (int localID = 0; localID < collect.count(); ++localID)
     {
         var orbitDartID = collect.get(localID);
-        param.values[base + localID] = param.model.mapToExtrinsic(orbitDartID);
+        param.values[base + localID] = param.model.mapToVertexKey(orbitDartID);
     }
 }
 
@@ -70,6 +70,6 @@ void FaceOrbit<I : IInteger, K : IArithmetic>(
     for (int localID = 0; localID < collect.count(); ++localID)
     {
         var orbitDartID = collect.get(localID);
-        param.values[base + localID] = param.model.mapToExtrinsic(orbitDartID);
+        param.values[base + localID] = param.model.mapToVertexKey(orbitDartID);
     }
 }

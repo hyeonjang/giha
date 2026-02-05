@@ -1,6 +1,6 @@
 implementing giha_kernel;
 
-struct BuildGeometryParam<I : IInteger, Scalar : __BuiltinFloatingPointType>
+struct BuildGeometryParam<I : IInteger & IAtomicable, Scalar : __BuiltinFloatingPointType>
 {
     ExtrinsicGeometry<I, Scalar> extrinsic;
     MutableIntrinsicGeometry<I, Scalar> intrinsic;
@@ -8,7 +8,7 @@ struct BuildGeometryParam<I : IInteger, Scalar : __BuiltinFloatingPointType>
 
 [shader("compute")]
 [numthreads(WORKGROUP_SIZE, 1, 1)]
-void BuildGeometry<I : IInteger, Scalar : __BuiltinFloatingPointType>(
+void BuildGeometry<I : IInteger & IAtomicable, Scalar : __BuiltinFloatingPointType>(
     ParameterBlock<BuildGeometryParam<I, Scalar>> param,
     uint3 gid : SV_DispatchThreadID
 )
@@ -16,5 +16,11 @@ void BuildGeometry<I : IInteger, Scalar : __BuiltinFloatingPointType>(
     if (gid.x >= param.extrinsic.model.count()) return;
 
     I dartID = I(gid.x);
-    param.intrinsic.computeDartLength(dartID, param.extrinsic);
+    param.intrinsic.length(dartID, param.extrinsic);
+}
+
+[shader("compute")]
+[numthreads(WORKGROUP_SIZE, 1, 1)]
+void flip()
+{
 }

@@ -22,30 +22,55 @@ struct SigmaModel {
         idSize = sizeof(Id);
         keySize = sizeof(Key);
 
-        printf("s %d\n", map.vNext.size() + padd);
-
         counter = createBuffer(device, &cpuCounter, 1);
         vertNext = createBuffer(device, map.vNext.data(), map.vNext.size() + padd);
         edgeNext = createBuffer(device, map.eNext.data(), map.eNext.size() + padd);
-        extrinsicKey = createBuffer(device, map.vKeys.data(), map.vKeys.size() + padd);
+        inducedVertexMap = createBuffer(device, map.vKeys.data(), map.vKeys.size() + padd);
     }
 
     void writeInto(rhi::ShaderCursor cursor) const {
+
+        {
+            auto vertCursor = cursor.getPath("vertNext");
+            CHECK(vertCursor.isValid(), "Missing SigmaModel.vertNext");
+            CHECK_SLANG(vertCursor.setBinding(vertNext), "Failed to bind vertNext");
+
+            auto edgeCursor = cursor.getPath("edgeNext");
+            CHECK(edgeCursor.isValid(), "Missing SigmaModel.edgeNext");
+            CHECK_SLANG(edgeCursor.setBinding(edgeNext), "Failed to bind edgeNext");
+
+            auto keyCursor = cursor.getPath("inducedVertexMap");
+            CHECK(keyCursor.isValid(), "Missing SigmaModel.inducedVertexMap");
+            CHECK_SLANG(keyCursor.setBinding(inducedVertexMap), "Failed to bind inducedVertexMap");
+        }
+
+        // for mutable
         auto counterCursor = cursor.getPath("counter");
-        CHECK(counterCursor.isValid(), "Missing SigmaModel.counter");
-        CHECK_SLANG(counterCursor.setBinding(counter), "Failed to bind counter");
+        if (counterCursor.isValid()) {
+            CHECK_SLANG(counterCursor.setBinding(counter), "Failed to bind counter");
+        }        
+        
+        auto modelCursor = cursor.getPath("model");
+        if (modelCursor.isValid()) {
+            auto vertCursor = modelCursor.getPath("vertNext");
+            CHECK(vertCursor.isValid(), "Missing SigmaModel.vertNext");
+            CHECK_SLANG(vertCursor.setBinding(vertNext), "Failed to bind vertNext");
 
-        auto vertCursor = cursor.getPath("vertNext");
-        CHECK(vertCursor.isValid(), "Missing SigmaModel.vertNext");
-        CHECK_SLANG(vertCursor.setBinding(vertNext), "Failed to bind vertNext");
+            auto edgeCursor = modelCursor.getPath("edgeNext");
+            CHECK(edgeCursor.isValid(), "Missing SigmaModel.edgeNext");
+            CHECK_SLANG(edgeCursor.setBinding(edgeNext), "Failed to bind edgeNext");
 
-        auto edgeCursor = cursor.getPath("edgeNext");
-        CHECK(edgeCursor.isValid(), "Missing SigmaModel.edgeNext");
-        CHECK_SLANG(edgeCursor.setBinding(edgeNext), "Failed to bind edgeNext");
+            auto keyCursor = modelCursor.getPath("inducedVertexMap");
+            CHECK(keyCursor.isValid(), "Missing SigmaModel.inducedVertexMap");
+            CHECK_SLANG(keyCursor.setBinding(inducedVertexMap), "Failed to bind inducedVertexMap");
 
-        auto keyCursor = cursor.getPath("extrinsicKey");
-        CHECK(keyCursor.isValid(), "Missing SigmaModel.extrinsicKey");
-        CHECK_SLANG(keyCursor.setBinding(extrinsicKey), "Failed to bind extrinsicKey");
+            auto vertNextAtomicCursor = cursor.getPath("vertNextAtomic");
+            auto edgeNextAtomicCursor = cursor.getPath("edgeNextAtomic");
+            if (vertNextAtomicCursor.isValid() && edgeNextAtomicCursor.isValid()) {
+                CHECK_SLANG(vertNextAtomicCursor.setBinding(vertNext), "Failed to bind vertNextAtomic");
+                CHECK_SLANG(edgeNextAtomicCursor.setBinding(edgeNext), "Failed to bind edgeNextAtomic");
+            }
+        }
     }
 
     size_t idSize, keySize;
@@ -54,7 +79,7 @@ struct SigmaModel {
     Slang::ComPtr<rhi::IBuffer> counter;
     Slang::ComPtr<rhi::IBuffer> vertNext;
     Slang::ComPtr<rhi::IBuffer> edgeNext;
-    Slang::ComPtr<rhi::IBuffer> extrinsicKey;
+    Slang::ComPtr<rhi::IBuffer> inducedVertexMap;
 };
 
 // 

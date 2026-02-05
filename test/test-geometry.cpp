@@ -258,31 +258,19 @@ TEST_IN(GeometrySuite, LoopSubdivide) {
     }
     computePass->end();
     CHECK_SLANG(queue->submit(encoder->finish()), "Failed to submit command buffer\n");
-    printf("Submitted\n");
 
     std::vector<u32> dartCounter = slangrhi::readBuffer<u32>(gDevice, dart.counter, 1);
-    printf("Dart count after subdivision: %u\n", dartCounter[0]);
-
-    std::vector<u32> dartVertNext = slangrhi::readBuffer<u32>(gDevice, dart.vertNext, dartCounter[0]);
-    for (u32 i = 0; i < dartCounter[0]; ++i) {
-        printf("Dart %u -> Vertex %u\n", i, dartVertNext[i]);
-    }
-
-    std::vector<u32> dartEdgeNext = slangrhi::readBuffer<u32>(gDevice, dart.edgeNext, dartCounter[0]);
-    for (u32 i = 0; i < dartCounter[0]; ++i) {
-        printf("Dart %u -> Twin Dart %u\n", i, dartEdgeNext[i]);
-    }
-
+    CHECK(dartCounter[0] == 48, "Unexpected dart count after subdivision");
 
     std::vector<u32> outFaceCount = slangrhi::readBuffer<u32>(gDevice, orbitParam.orbitCounter, 1);
-    printf("Face count: %u\n", outFaceCount[0]);
-    std::vector<u32> outFaceOffset = slangrhi::readBuffer<u32>(gDevice, orbitParam.indices, outFaceCount[0] + 1);
-    std::vector<u32> outFaceVertexList = slangrhi::readBuffer<u32>(gDevice, orbitParam.values, outFaceOffset.back());
+    CHECK(outFaceCount[0] == 16, "Unexpected face count after subdivision");
 
     std::vector<u32> outVertexCount = slangrhi::readBuffer<u32>(gDevice, extrinsic.counter, 1);
-    printf("Vertex count: %u\n", outVertexCount[0]);
+    CHECK(outVertexCount[0] == 10, "Unexpected vertex count after subdivision");
     std::vector<Scalar> outVertexCoordinates = slangrhi::readBuffer<f32>(gDevice, extrinsic.vertexPositions, outVertexCount[0] * 3);
 
     const std::string outPath = gTestPath + "/resource/triangle_subdivided.ply";
-    writeSubdividedMeshToPly("triangulate.ply", outVertexCoordinates, outFaceOffset, outFaceVertexList);
+    
+    // if ()
+        // writeSubdividedMeshToPly("triangulate.ply", outVertexCoordinates, outFaceOffset, outFaceVertexList);
 }

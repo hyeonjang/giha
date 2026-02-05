@@ -22,12 +22,12 @@ struct VertNext<I : IInteger> : INextOP<I>
 
     I next(I i) { return vertNext[i.toInt()]; }
 
-    __init(StructuredBuffer<I> _vertNext)
+    __init(IArray<I> _vertNext)
     {
         vertNext = _vertNext;
     }
 
-    StructuredBuffer<I> vertNext;
+    IArray<I> vertNext;
 }
 
 struct EdgeNext<I : IInteger> : INextOP<I>
@@ -35,61 +35,27 @@ struct EdgeNext<I : IInteger> : INextOP<I>
     static const uint MaxSteps = VERT_ORBIT_MAX_STEPS;
     I next(I i) { return edgeNext[i.toInt()]; }
 
-    __init(StructuredBuffer<I> _edgeNext)
+    __init(IArray<I> _edgeNext)
     {
         edgeNext = _edgeNext;
     }
 
-    StructuredBuffer<I> edgeNext;
+    IArray<I> edgeNext;
 }
 
-struct FaceNext<I : IInteger> : INextOP<I>
+struct FaceNext<I : IInteger, Buffer : IArray<I>> : INextOP<I>
 {
     static const uint MaxSteps = FACE_ORBIT_MAX_STEPS;
     I next(I i) { return vertNext[edgeNext[i.toInt()].toInt()]; }
 
-    __init(StructuredBuffer<I> _vertNext, StructuredBuffer<I> _edgeNext)
+    __init(Buffer _vertNext, Buffer _edgeNext)
     {
         vertNext = _vertNext;
         edgeNext = _edgeNext;
     }
 
-    StructuredBuffer<I> vertNext;
-    StructuredBuffer<I> edgeNext;
-}
-
-// RW
-struct VertNextRW<I : IInteger> : INextOP<I>
-{
-    static const uint MaxSteps = VERT_ORBIT_MAX_STEPS;
-    I next(I i) { return vertNext[i.toInt()]; }
-
-    __init(RWStructuredBuffer<I> _vertNext) { vertNext = _vertNext; }
-    RWStructuredBuffer<I> vertNext;
-}
-
-struct EdgeNextRW<I : IInteger> : INextOP<I>
-{
-    static const uint MaxSteps = VERT_ORBIT_MAX_STEPS;
-    I next(I i) { return edgeNext[i.toInt()]; }
-
-    __init(RWStructuredBuffer<I> _edgeNext) { edgeNext = _edgeNext; }
-    RWStructuredBuffer<I> edgeNext;
-}
-
-struct FaceNextRW<I : IInteger> : INextOP<I>
-{
-    static const uint MaxSteps = FACE_ORBIT_MAX_STEPS;
-    I next(I i) { return vertNext[edgeNext[i.toInt()].toInt()]; }
-
-    __init(RWStructuredBuffer<I> _vertNext, RWStructuredBuffer<I> _edgeNext)
-    {
-        vertNext = _vertNext;
-        edgeNext = _edgeNext;
-    }
-
-    RWStructuredBuffer<I> vertNext;
-    RWStructuredBuffer<I> edgeNext;
+    Buffer vertNext;
+    Buffer edgeNext;
 }
 
 public interface IOrbitHandler<I : IInteger>
@@ -116,6 +82,13 @@ public struct MinIdOrbitHandler<I : IInteger> : IOrbitHandler<I>
 
     public I minID;
     uint _count = 0;
+}
+
+public struct OribitCollectBuffer
+{
+    RWStructuredBuffer<Atomic<uint>> orbitCounter;
+    RWStructuredBuffer<Atomic<uint>> offsetCounter;
+    RWStructuredBuffer<uint> indices;
 }
 
 groupshared int orbitCollectShared[WORKGROUP_SIZE * GIHA_COLLECT_MAX_STEPS];
@@ -154,16 +127,15 @@ public struct CollectHandler<I : IInteger> : IOrbitHandler<I>
     uint _count = 0;
 }
 
-public struct SigmaModel<I: IInteger, K: IArithmetic>
+public struct SigmaModel<I: IInteger, K: IArithmetic, IBuffer : IArray<I>, KBuffer : IArray<K>>
 {
-    StructuredBuffer<uint> counter;
-    StructuredBuffer<I> vertNext; // \sigma, v-orbit: vertex rotation, CCW by combinatorial
-    StructuredBuffer<I> edgeNext; // \alpha, e-orbit: edge rotation, CCW
-    StructuredBuffer<K> extrinsicKey;
+    IBuffer vertNext; // \sigma, v-orbit: vertex rotation, CCW by combinatorial
+    IBuffer edgeNext; // \alpha, e-orbit: edge rotation, CCW
+    KBuffer inducedVertexMap;
 
     // map to extrinsic
-    public K mapToExtrinsic(I i0) { return extrinsicKey[i0.toInt()]; }
-    public uint count() { return counter[0]; }
+    public K mapToVertexKey(I i0) { return inducedVertexMap[i0.toInt()]; }
+    public uint count() { return vertNext.getCount(); }
 
     //
     // query
@@ -183,6 +155,21 @@ public struct SigmaModel<I: IInteger, K: IArithmetic>
         return vertNext[edgeNext[i0.toInt()].toInt()];
     }
 
+    public I prevVert(I i0)
+    {
+        return prev(VertNext<I>(vertNext), i0);
+    };
+
+    public I prevEdge(I i0)
+    {
+        return prev(EdgeNext<I>(edgeNext), i0);
+    };
+
+    public I prevFace(I i0)
+    {
+        return prev(FaceNext<I, IBuffer>(vertNext, edgeNext), i0);
+    }
+
     // vertex
     public bool vertOrbit<Handler : IOrbitHandler<I>>(I i0, inout Handler handler)
     {
@@ -198,48 +185,75 @@ public struct SigmaModel<I: IInteger, K: IArithmetic>
     // expected to work on dynmaic size
     public bool faceOrbit<Handler : IOrbitHandler<I>>(I i0, inout Handler handler)
     {
-        return walkOrbit(i0, FaceNext<I>(vertNext, edgeNext), handler);
+        return walkOrbit(i0, FaceNext<I, IBuffer>(vertNext, edgeNext), handler);
     }
 
     public CollectHandler<I> collectVertOrbitIfMin(
-        I dartID,
-        uint3 tid,
+        I dartID, uint3 tid,
         RWStructuredBuffer<Atomic<uint>> orbitCounter,
         RWStructuredBuffer<Atomic<uint>> offsetCounter,
-        RWStructuredBuffer<uint> indices)
+        RWStructuredBuffer<uint> indices
+    )
     {
-        return collectOrbitIfRepresentative(VertNext<I>(vertNext), FACE_ORBIT_MAX_STEPS,
-            dartID, tid, orbitCounter, offsetCounter, indices
+        return collectOrbitIfRepresentative(VertNext<I>(vertNext), VERT_ORBIT_MAX_STEPS,
+                                            dartID, tid, orbitCounter, offsetCounter, indices
         );
     }
 
     public CollectHandler<I> collectEdgeOrbitIfMin(
-        I dartID,
-        uint3 tid,
+        I dartID, uint3 tid,
         RWStructuredBuffer<Atomic<uint>> orbitCounter,
         RWStructuredBuffer<Atomic<uint>> offsetCounter,
-        RWStructuredBuffer<uint> indices)
+        RWStructuredBuffer<uint> indices
+    )
     {
         return collectOrbitIfRepresentative(EdgeNext<I>(edgeNext), EDGE_ORBIT_MAX_STEPS,
-            dartID, tid, orbitCounter, offsetCounter, indices
+                                            dartID, tid, orbitCounter, offsetCounter, indices
         );
     }
 
     public CollectHandler<I> collectFaceOrbitIfMin(
-        I dartID,
-        uint3 tid,
+        I dartID, uint3 tid,
         RWStructuredBuffer<Atomic<uint>> orbitCounter,
         RWStructuredBuffer<Atomic<uint>> offsetCounter,
-        RWStructuredBuffer<uint> indices)
+        RWStructuredBuffer<uint> indices
+    )
     {
-        return collectOrbitIfRepresentative(FaceNext<I>(vertNext, edgeNext), FACE_ORBIT_MAX_STEPS,
-            dartID, tid, orbitCounter, offsetCounter, indices
+        return collectOrbitIfRepresentative(FaceNext<I, IBuffer>(vertNext, edgeNext), FACE_ORBIT_MAX_STEPS,
+                                            dartID, tid, orbitCounter, offsetCounter, indices
         );
     }
 
-// 
-// private
-// 
+    public CollectHandler<I> collectVertOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer orbitBuffer)
+    {
+        return collectVertOrbitIfMin(dartID, tid, orbitBuffer.orbitCounter, orbitBuffer.offsetCounter, orbitBuffer.indices);
+    }
+
+    public CollectHandler<I> collectEdgeOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer orbitBuffer)
+    {
+        return collectEdgeOrbitIfMin(dartID, tid, orbitBuffer.orbitCounter, orbitBuffer.offsetCounter, orbitBuffer.indices);
+    }
+
+    public CollectHandler<I> collectFaceOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer orbitBuffer)
+    {
+        return collectFaceOrbitIfMin(dartID, tid, orbitBuffer.orbitCounter, orbitBuffer.offsetCounter, orbitBuffer.indices);
+    }
+
+    //
+    // private
+    //
+    private I prev<NextOP : INextOP<I>>(NextOP nextop, I i0)
+    {
+        I cursor = i0;
+        [unroll] for (uint step = 0; step < INextOP<I>::MaxSteps; ++step)
+        {
+            I next = nextop.next(cursor);
+            if (next == i0) { return cursor; }
+            cursor = next;
+        }
+        return cursor;
+    }
+
     private bool walkOrbit<NextOP, Handler>(I i0, NextOP op, inout Handler handler)
         where NextOP : INextOP<I> where Handler : IOrbitHandler<I>
     {
@@ -286,46 +300,54 @@ public struct SigmaModel<I: IInteger, K: IArithmetic>
     }
 };
 
-public struct MutableSigmaModel<I : IInteger, K : IArithmetic>
+public struct MutableSigmaModel<I : IInteger & IAtomicable, K : IArithmetic>
 {
+    // just same as SigmaModel for read
+    SigmaModel<I, K, RWStructuredBuffer<I>, RWStructuredBuffer<K>> model;
+    RWStructuredBuffer<I> vertNext;
+    RWStructuredBuffer<I> edgeNext;
+    RWStructuredBuffer<K> inducedVertexMap; // induced map
+
     RWStructuredBuffer<Atomic<uint>> counter;
-    public RWStructuredBuffer<I> vertNext;
-    public RWStructuredBuffer<I> edgeNext;
-    RWStructuredBuffer<K> extrinsicKey;
+    RWStructuredBuffer<Atomic<I>> vertNextAtomic;
+    RWStructuredBuffer<Atomic<I>> edgeNextAtomic;
 
     // map
-    public K mapToExtrinsic(I i0) { return extrinsicKey[i0.toInt()]; }
-    public void assignExtrinsic(I i, K k) { extrinsicKey[i.toInt()] = k; }
+    public K mapToVertex(I i0) { return model.mapToVertexKey(i0); }
     public uint count() { return counter[0].load(); }
+    public uint increamentCounter() { return counter[0].increment(); }
 
-    public I nextVert(I i0)
+    public I nextVert(I i) { return model.nextVert(i); }
+    public I nextEdge(I i) { return model.nextEdge(i); }
+    public I nextFace(I i) { return model.nextFace(i); }
+    public I prevVert(I i) { return model.prevVert(i); }
+    public I prevEdge(I i) { return model.prevEdge(i); }
+    public I prevFace(I i) { return model.prevFace(i); }
+    public bool vertOrbit<Handler : IOrbitHandler<I>>(I i0, inout Handler handler) { return model.vertOrbit(i0, handler); }
+    public bool edgeOrbit<Handler : IOrbitHandler<I>>(I i0, inout Handler handler) { return model.edgeOrbit(i0, handler); }
+    public bool faceOrbit<Handler : IOrbitHandler<I>>(I i0, inout Handler handler) { return model.faceOrbit(i0, handler); }
+    public CollectHandler<I> collectVertOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer buf) { return model.collectVertOrbitIfMin(dartID, tid, buf); }
+    public CollectHandler<I> collectEdgeOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer buf) { return model.collectEdgeOrbitIfMin(dartID, tid, buf); }
+    public CollectHandler<I> collectFaceOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer buf) { return model.collectFaceOrbitIfMin(dartID, tid, buf); }
+
+    public void setVertNext(I i0, I i1)
     {
-        return vertNext[i0.toInt()];
+        vertNext[i0.toInt()] = i1;
     }
 
-    public I nextEdge(I i0)
+    public void setEdgeNext(I i0, I i1)
     {
-        return edgeNext[i0.toInt()];
+        edgeNext[i0.toInt()] = i1;
     }
 
-    public I nextFace(I i0)
+    public void setFaceNext(I i0, I i1)
     {
-        return vertNext[edgeNext[i0.toInt()].toInt()];
+        vertNext[edgeNext[i0.toInt()].toInt()] = i1;
     }
 
-    public I prevVert(I i0)
+    public void setVertexKey(I dartID, K vertexID)
     {
-        return prev(VertNextRW<I>(vertNext), i0);
-    };
-
-    public I prevEdge(I i0)
-    {
-        return prev(EdgeNextRW<I>(edgeNext), i0);
-    };
-
-    public I prevFace(I i0)
-    {
-        return prev(FaceNextRW<I>(vertNext, edgeNext), i0);
+        inducedVertexMap[dartID.toInt()] = vertexID;
     }
 
     //
@@ -334,41 +356,13 @@ public struct MutableSigmaModel<I : IInteger, K : IArithmetic>
     [mutating]
     public I newDart()
     {
-        let inc = counter[0].increment();
+        let inc = increamentCounter();
         let newID = I(inc);
 
         // self-rotation
         vertNext[inc] = I(inc);
         edgeNext[inc] = I(inc);
         return newID;
-    }
-
-    // 
-    public bool insertVertNext(I curr, I newId)
-    {
-        I next = vertNext[curr.toInt()];
-        vertNext[curr.toInt()] = newId;
-        vertNext[newId.toInt()] = next;
-        return true;
-    }
-
-    public bool insertEdgeNext(I curr, I newId)
-    {
-        I next = edgeNext[curr.toInt()];
-        edgeNext[curr.toInt()] = newId;
-        edgeNext[newId.toInt()] = next;
-        return true;
-    }
-
-    public bool insertFaceNext(I curr, I newId)
-    {
-        I edgeStep = edgeNext[curr.toInt()];
-        I next = vertNext[edgeStep.toInt()];
-
-        // not working
-        vertNext[edgeStep.toInt()] = newId;
-        vertNext[newId.toInt()] = next;
-        return false;
     }
 
     [mutating]
@@ -391,22 +385,44 @@ public struct MutableSigmaModel<I : IInteger, K : IArithmetic>
         newID = newDart();
         return insertFaceNext(curr, newID);
     }
-    // public I insertNew
 
-    public bool spliceVertNext(I i)
+    public bool insertVertNext(I curr, I newId)
     {
-        I prevDart = prevVert(i);
-        I nextDart = vertNext[i.toInt()];
-        if (prevDart == i && nextDart == i) return false; // single dart orbit
+        I next = model.nextVert(curr);
+        vertNext[curr.toInt()] = newId;
+        vertNext[newId.toInt()] = next;
+        return true;
+    }
 
-        vertNext[prevDart.toInt()] = nextDart;
+    public bool insertEdgeNext(I curr, I newId)
+    {
+        I next = model.nextEdge(curr);
+        edgeNext[curr.toInt()] = newId;
+        edgeNext[newId.toInt()] = next;
+        return true;
+    }
+
+    public bool insertFaceNext(I curr, I newId)
+    {
+        I edgeStep = model.nextEdge(curr);
+        I next = model.nextVert(edgeStep);
+
+        // not working
+        vertNext[edgeStep.toInt()] = newId;
+        vertNext[newId.toInt()] = next;
+        return false;
+    }
+
+    public bool spliceVertNext(I pos, I other)
+    {
+        vertNext[pos.toInt()] = other;
         return true;
     }
 
     public bool spliceEdgeNext(I i)
     {
         I prevDart = prevEdge(i);
-        I nextDart = edgeNext[i.toInt()];
+        I nextDart = model.nextEdge(i);
         if (prevDart == i && nextDart == i) return false;
 
         edgeNext[prevDart.toInt()] = nextDart;
@@ -416,44 +432,87 @@ public struct MutableSigmaModel<I : IInteger, K : IArithmetic>
     public bool spliceFaceNext(I i)
     {
         I prevDart = prevFace(i);
-        I nextDart = vertNext[edgeNext[i.toInt()].toInt()];
+        I nextDart = model.nextVert(model.nextEdge(i));
         if (prevDart == i && nextDart == i) return false;
 
         // face successor lives on vertNext[edgeNext[prev]]
-        I edgeStep = edgeNext[prevDart.toInt()];
+        I edgeStep = model.nextEdge(prevDart);
         vertNext[edgeStep.toInt()] = nextDart;
         return true;
     }
 
-
-    //
-    // local operations: combined operators
-    //
-    // public void flip(I i)
-    // {
-    //     // target
-    //     I invLoop = edgeNext[vertNext[i.toInt()].toInt()];
-    //     vertKeys[i.toInt()] = vertKeys[invLoop.toInt()];
-
-    //     spliceVertNext(i);
-    //     insertVertNext(invLoop, i);
-    // }
-
-    //
-    // private
-    //
-    private I prev<NextOP : INextOP<I>>(NextOP nextop, I i0)
+    public bool atomicInsertVertNext(I curr, I newID)
     {
-        I cursor = i0;
-        [unroll] for (uint step = 0; step < INextOP<I>::MaxSteps; ++step)
+        while (true)
         {
-            I next = nextop.next(cursor);
-            if (next == i0) { return cursor; }
-            cursor = next;
+            I next = vertNextAtomic[curr.toInt()].load();
+            if (vertNextAtomic[curr.toInt()].compareExchange(next, newID) == next)
+            {
+                vertNextAtomic[newID.toInt()].store(next);
+                return true;
+            }
         }
-        return cursor;
+        return false;
     }
-    // public vector<I, 2> twin_edge(I i) {
-    //     return vector<I, 2>(i, dartTwin[i.toInt()]);
-    // }
+
+    public bool atomicRemoveVertNext(I i)
+    {
+        while (true)
+        {
+            I prevDart = prevVert(i);
+            I nextDart = vertNextAtomic[i.toInt()].load();
+            if (prevDart == i && nextDart == i) return false; // single dart orbit
+
+            if (vertNextAtomic[prevDart.toInt()].compareExchange(i, nextDart) == i)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // @@ not working, even if the rotating would atomically work, the searching the target is not.
+    public bool atomicRotateVertNext(I i)
+    {
+        while (true)
+        {
+            // snapshot neighbors atomically
+            I ip = prevVert(i);
+            I i1 = vertNextAtomic[i.toInt()].load();
+            if (i1 == i) return false;         // single-dart orbit
+            I i2 = vertNextAtomic[i1.toInt()].load();
+            I i3 = vertNextAtomic[i2.toInt()].load();
+
+            // splice i out by redirecting its predecessor
+            if (vertNextAtomic[ip.toInt()].compareExchange(i, i1) != i)
+                continue; // predecessor changed, retry
+
+            bool inserted = false;
+            // insert i before i2
+            if (vertNextAtomic[i2.toInt()].compareExchange(i3, i) == i3)
+            {
+                if (vertNextAtomic[i.toInt()].compareExchange(i1, i3) == i1)
+                {
+                    inserted = true;
+                }
+                else
+                {
+                    // failed to publish new successor for i; revert insertion
+                    vertNextAtomic[ip.toInt()].exchange(i);
+                    vertNextAtomic[i2.toInt()].exchange(i3);
+                }
+            }
+            else
+            {
+                // failed to insert; restore predecessor link
+                vertNextAtomic[ip.toInt()].exchange(i);
+            }
+
+            if (inserted) return true;
+        }
+        return false;
+    }
+
+
+
 };

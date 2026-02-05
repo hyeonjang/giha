@@ -4,7 +4,7 @@ implementing giha_kernel;
 // : no boundary consideration
 [shader("compute")]
 [numthreads(WORKGROUP_SIZE, 1, 1)]
-void LoopSubdivide<I : IInteger, Scalar : __BuiltinFloatingPointType>(
+void LoopSubdivide<I : IInteger & IAtomicable, Scalar : __BuiltinFloatingPointType>(
     uniform MutableExtrinsicGeometry<I, Scalar> extrinsic,
     uint3 tid: SV_GroupThreadID,
     uint3 gid: SV_DispatchThreadID
@@ -44,8 +44,8 @@ void LoopSubdivide<I : IInteger, Scalar : __BuiltinFloatingPointType>(
     // 3-1. next face
     I df1e0 = extrinsic.model.nextEdge(df1);
     I df1e0v0 = extrinsic.model.nextVert(df1e0);
-    extrinsic.model.edgeNext[df1e0v0.toInt()] = dv1;
-    extrinsic.model.edgeNext[dv1.toInt()] = df1e0v0;
+    extrinsic.model.setEdgeNext(df1e0v0, dv1);
+    extrinsic.model.setEdgeNext(dv1, df1e0v0);
 
     // 4. select thread to assign extrinsic key
     if (d0 > de1) return;
@@ -55,17 +55,17 @@ void LoopSubdivide<I : IInteger, Scalar : __BuiltinFloatingPointType>(
 
     // 5. position a new vertex on edge
     uint newKey = extrinsic.counter[0].increment();
-    extrinsic.model.assignExtrinsic(de0, newKey);
-    extrinsic.model.assignExtrinsic(dv0, newKey);
-    extrinsic.model.assignExtrinsic(dv1, newKey);
+    extrinsic.model.setVertexKey(de0, newKey);
+    extrinsic.model.setVertexKey(dv0, newKey);
+    extrinsic.model.setVertexKey(dv1, newKey);
 
     // 5-1. mirror side
-    extrinsic.model.assignExtrinsic(de1e0, newKey);
-    extrinsic.model.assignExtrinsic(de1e0v0, newKey);
-    extrinsic.model.assignExtrinsic(de1e0v1, newKey);
+    extrinsic.model.setVertexKey(de1e0, newKey);
+    extrinsic.model.setVertexKey(de1e0v0, newKey);
+    extrinsic.model.setVertexKey(de1e0v1, newKey);
 
-    var mid0 = extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(d0)] + extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(de1)];
-    var mid1 = extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(df2)] + extrinsic.vertexPositions[extrinsic.model.mapToExtrinsic(de1f2)];
+    var mid0 = extrinsic.vertexPositions[extrinsic.model.mapToVertex(d0)] + extrinsic.vertexPositions[extrinsic.model.mapToVertex(de1)];
+    var mid1 = extrinsic.vertexPositions[extrinsic.model.mapToVertex(df2)] + extrinsic.vertexPositions[extrinsic.model.mapToVertex(de1f2)];
 
     mid0 = mid0 * Scalar(3.0) / Scalar(8.0);
     mid1 = mid1 / Scalar(8.0);
