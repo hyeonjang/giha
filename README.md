@@ -1,6 +1,7 @@
 # giha
 
 `giha` is a playground for experimenting with dart-based geometry processing on [Slang](https://github.com/shader-slang/slang).
+The project focuses on implementing cyclic permutations of connectivity representations for geometry processing workflows.
 
 ## Features
 
@@ -88,4 +89,4 @@ See `module/giha_kernel/subdivide.slang` for a complete in-shader example of ins
 
 ## License
 
-The repository currently has no explicit license file; treat it as “all rights reserved” unless the owner provides additional terms.
+Distributed under the MIT License; see `LICENSE` for details.
