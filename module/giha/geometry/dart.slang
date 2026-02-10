@@ -167,7 +167,7 @@ public struct SigmaModel<I: IInteger, K: IArithmetic, IBuffer : IArray<I>, KBuff
 
     public I prevFace(I i0)
     {
-        return prev(FaceNext<I, IBuffer>(vertNext, edgeNext), i0);
+        return edgeNext[vertNext[i0.toInt()].toInt()];
     }
 
     // vertex
@@ -303,17 +303,18 @@ public struct SigmaModel<I: IInteger, K: IArithmetic, IBuffer : IArray<I>, KBuff
 public struct MutableSigmaModel<I : IInteger & IAtomicable, K : IArithmetic>
 {
     // just same as SigmaModel for read
-    SigmaModel<I, K, RWStructuredBuffer<I>, RWStructuredBuffer<K>> model;
     RWStructuredBuffer<I> vertNext;
     RWStructuredBuffer<I> edgeNext;
     RWStructuredBuffer<K> inducedVertexMap; // induced map
 
+    SigmaModel<I, K, RWStructuredBuffer<I>, RWStructuredBuffer<K>> model;
     RWStructuredBuffer<Atomic<uint>> counter;
     RWStructuredBuffer<Atomic<I>> vertNextAtomic;
     RWStructuredBuffer<Atomic<I>> edgeNextAtomic;
+    RWStructuredBuffer<int> ownershipFlags;
 
     // map
-    public K mapToVertex(I i0) { return model.mapToVertexKey(i0); }
+    public K mapToVertexKey(I i0) { return model.mapToVertexKey(i0); }
     public uint count() { return counter[0].load(); }
     public uint increamentCounter() { return counter[0].increment(); }
 
@@ -330,29 +331,15 @@ public struct MutableSigmaModel<I : IInteger & IAtomicable, K : IArithmetic>
     public CollectHandler<I> collectEdgeOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer buf) { return model.collectEdgeOrbitIfMin(dartID, tid, buf); }
     public CollectHandler<I> collectFaceOrbitIfMin(I dartID, uint3 tid, OribitCollectBuffer buf) { return model.collectFaceOrbitIfMin(dartID, tid, buf); }
 
-    public void setVertNext(I i0, I i1)
-    {
-        vertNext[i0.toInt()] = i1;
-    }
+    public void setVertNext(I i0, I i1) { vertNext[i0.toInt()] = i1; }
+    public void setEdgeNext(I i0, I i1) { edgeNext[i0.toInt()] = i1; }
+    public void setFaceNext(I i0, I i1) { vertNext[edgeNext[i0.toInt()].toInt()] = i1; }
+    public void setVertexKey(I dartID, K vertexID) { inducedVertexMap[dartID.toInt()] = vertexID; }
 
-    public void setEdgeNext(I i0, I i1)
-    {
-        edgeNext[i0.toInt()] = i1;
-    }
+    public I atomicNextVert(I i) { return vertNextAtomic[i.toInt()].load(); }
+    public I atomicNextEdge(I i) { return edgeNextAtomic[i.toInt()].load(); }
 
-    public void setFaceNext(I i0, I i1)
-    {
-        vertNext[edgeNext[i0.toInt()].toInt()] = i1;
-    }
-
-    public void setVertexKey(I dartID, K vertexID)
-    {
-        inducedVertexMap[dartID.toInt()] = vertexID;
-    }
-
-    //
-    // atomic modifiers
-    //
+    // modifier        
     [mutating]
     public I newDart()
     {
@@ -455,64 +442,20 @@ public struct MutableSigmaModel<I : IInteger & IAtomicable, K : IArithmetic>
         return false;
     }
 
-    public bool atomicRemoveVertNext(I i)
+    // if sucess return next dart, or return self dart
+    public I atomicRemoveVertNext(I i)
     {
         while (true)
         {
             I prevDart = prevVert(i);
             I nextDart = vertNextAtomic[i.toInt()].load();
-            if (prevDart == i && nextDart == i) return false; // single dart orbit
+            if (prevDart == i && nextDart == i) return i; // single dart orbit
 
             if (vertNextAtomic[prevDart.toInt()].compareExchange(i, nextDart) == i)
             {
-                return true;
+                return nextDart;
             }
         }
-        return false;
+        return i;
     }
-
-    // @@ not working, even if the rotating would atomically work, the searching the target is not.
-    public bool atomicRotateVertNext(I i)
-    {
-        while (true)
-        {
-            // snapshot neighbors atomically
-            I ip = prevVert(i);
-            I i1 = vertNextAtomic[i.toInt()].load();
-            if (i1 == i) return false;         // single-dart orbit
-            I i2 = vertNextAtomic[i1.toInt()].load();
-            I i3 = vertNextAtomic[i2.toInt()].load();
-
-            // splice i out by redirecting its predecessor
-            if (vertNextAtomic[ip.toInt()].compareExchange(i, i1) != i)
-                continue; // predecessor changed, retry
-
-            bool inserted = false;
-            // insert i before i2
-            if (vertNextAtomic[i2.toInt()].compareExchange(i3, i) == i3)
-            {
-                if (vertNextAtomic[i.toInt()].compareExchange(i1, i3) == i1)
-                {
-                    inserted = true;
-                }
-                else
-                {
-                    // failed to publish new successor for i; revert insertion
-                    vertNextAtomic[ip.toInt()].exchange(i);
-                    vertNextAtomic[i2.toInt()].exchange(i3);
-                }
-            }
-            else
-            {
-                // failed to insert; restore predecessor link
-                vertNextAtomic[ip.toInt()].exchange(i);
-            }
-
-            if (inserted) return true;
-        }
-        return false;
-    }
-
-
-
 };

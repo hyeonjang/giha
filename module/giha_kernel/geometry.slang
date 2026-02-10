@@ -16,11 +16,22 @@ void BuildGeometry<I : IInteger & IAtomicable, Scalar : __BuiltinFloatingPointTy
     if (gid.x >= param.extrinsic.model.count()) return;
 
     I dartID = I(gid.x);
-    param.intrinsic.length(dartID, param.extrinsic);
+    param.intrinsic.computeLength(dartID, param.extrinsic);
 }
 
 [shader("compute")]
 [numthreads(WORKGROUP_SIZE, 1, 1)]
-void flip()
+void FlipToDelaunay<I : IInteger & IAtomicable, Scalar : __BuiltinFloatingPointType>(
+    ParameterBlock<BuildGeometryParam<I, Scalar>> param,
+    uint3 gid: SV_DispatchThreadID
+)
 {
+    if (gid.x >= param.extrinsic.model.count()) return;
+
+    I dartID = I(gid.x);
+
+    param.intrinsic.computeLength(dartID, param.extrinsic);
+    GroupMemoryBarrierWithGroupSync();
+
+    param.intrinsic.edgeFlipIfNotDelaunay(dartID);
 }

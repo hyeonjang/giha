@@ -64,8 +64,8 @@ void LoopSubdivide<I : IInteger & IAtomicable, Scalar : __BuiltinFloatingPointTy
     extrinsic.model.setVertexKey(de1e0v0, newKey);
     extrinsic.model.setVertexKey(de1e0v1, newKey);
 
-    var mid0 = extrinsic.vertexPositions[extrinsic.model.mapToVertex(d0)] + extrinsic.vertexPositions[extrinsic.model.mapToVertex(de1)];
-    var mid1 = extrinsic.vertexPositions[extrinsic.model.mapToVertex(df2)] + extrinsic.vertexPositions[extrinsic.model.mapToVertex(de1f2)];
+    var mid0 = extrinsic.vertexPositions[extrinsic.model.mapToVertexKey(d0)] + extrinsic.vertexPositions[extrinsic.model.mapToVertexKey(de1)];
+    var mid1 = extrinsic.vertexPositions[extrinsic.model.mapToVertexKey(df2)] + extrinsic.vertexPositions[extrinsic.model.mapToVertexKey(de1f2)];
 
     mid0 = mid0 * Scalar(3.0) / Scalar(8.0);
     mid1 = mid1 / Scalar(8.0);

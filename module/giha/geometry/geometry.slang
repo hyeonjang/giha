@@ -26,10 +26,10 @@ public struct MutableExtrinsicGeometry<I : IInteger & IAtomicable, Scalar : __Bu
 
     public Scalar computeEdgeLength(I dartID)
     {
-        // uint tail = model.mapToVertexKey(dartID);
-        // uint head = model.mapToVertexKey(model.nextEdge(dartID));
+        uint tail = model.mapToVertexKey(dartID);
+        uint head = model.mapToVertexKey(model.nextEdge(dartID));
 
-        // return length(vertexPositions[tail] - vertexPositions[head]);
+        return length(vertexPositions[tail] - vertexPositions[head]);
     }
 }
 
@@ -43,11 +43,12 @@ public struct MutableIntrinsicGeometry<I : IInteger & IAtomicable, Scalar : __Bu
 {
     public MutableSigmaModel<I, uint> model;
     public RWStructuredBuffer<Scalar> dartLengths;
+    public RWStructuredBuffer<vector<Scalar, 2>> dartTransports;
 
     // 
     // quantity computation
     // 
-    public Scalar length(I dartID, ExtrinsicGeometry<I, Scalar> extrinsic)
+    public Scalar computeLength(I dartID, ExtrinsicGeometry<I, Scalar> extrinsic)
     {
         dartLengths[dartID.toInt()] = extrinsic.computeEdgeLength(dartID);
         return dartLengths[dartID.toInt()];
@@ -86,45 +87,58 @@ public struct MutableIntrinsicGeometry<I : IInteger & IAtomicable, Scalar : __Bu
         return sqrt(areaSq);
     }
 
-    //
-    // orbit
-    // 
     public bool edgeFlipIfNotDelaunay(I i0)
     {
-        // let edgeCollect = model.collect        
+        I curr = i0;
+        int prevFlag = 0;
+        if (cotanWeight(curr) > -Scalar(1e-6))
+            InterlockedCompareExchange(model.ownershipFlags[curr.toInt()], 0, int(curr.toInt()), prevFlag);
 
-        // check delaunay
-        if (cotanWeight(i0) > -Scalar(1e-6)) return false;
+        GroupMemoryBarrierWithGroupSync();
 
-        let layoutPositions = layoutDiamond(i0);
-        let newLength = length(layoutPositions[1] - layoutPositions[3]);
-
-        // 1. atomic splice
-        I i1 = model.nextVert(i0);
-        // combinatorial map
-        // atomic insertion after splice would be well working
-        // if (!model.atomicRotate(i0)) return false;
-
-        // 2. check changed by others
-        I i2 = model.nextVert(i0);
-        if (i1 == i2)
+        //@@ more sophisticate to do this
+        // check atomic
+        I prev = model.prevVert(curr);
+        if (model.ownershipFlags[prev.toInt()] != 0 )
         {
-            return true;
+            I mn = curr < prev ? curr : prev;
+            if (mn != curr)
+            {
+                // return the ownership
+                InterlockedCompareExchange(model.ownershipFlags[curr.toInt()], int(curr.toInt()), 0, prevFlag);
+                return false;
+            }
+        }
+
+        I next = model.nextVert(curr);
+        if (model.ownershipFlags[next.toInt()] != 0)
+        {
+            I mn = curr < next ? curr : next;
+            if (mn != curr)
+            {
+                // return the ownership
+                InterlockedCompareExchange(model.ownershipFlags[curr.toInt()], int(curr.toInt()), 0, prevFlag);
+                return false;
+            }
         }
         GroupMemoryBarrierWithGroupSync();
 
-        // else when modified, retry
+        // check whether target
+        I twin = model.nextEdge(curr);
+        if (model.ownershipFlags[curr.toInt()] != 0 && model.ownershipFlags[twin.toInt()] != 0)
+        {
+        // we can also do by only inducedMap
+            I fPrev = model.atomicRemoveVertNext(curr);
+            model.atomicInsertVertNext(fPrev, curr);
+            model.setVertexKey(curr, model.mapToVertexKey(fPrev));
 
+            // @@ compute new length
+            // dartLengths[curr.toInt()] = 
+        }
+        GroupMemoryBarrierWithGroupSync();
 
-        dartLengths[i0.toInt()] = newLength;
-
+        // return the ownership
+        InterlockedCompareExchange(model.ownershipFlags[curr.toInt()], int(curr.toInt()), 0, prevFlag);
         return true;
-    }
-
-    private Array<vector<Scalar, 2>, 4> layoutDiamond(I i0)
-    {
-        I a0 = i0;  
-        I a1 = model.nextFace(a0);
-        I a2 = model.nextFace(a1);
     }
 }
