@@ -6,6 +6,9 @@ module giha;
 public static const uint WORKGROUP_SIZE = GIHA_WORKGROUP_SIZE;
 public static const uint SUBGROUP_SIZE = GIHA_SUBGROUP_SIZE;
 
+__include "giha/spatial/primitive";
+__include "giha/spatial/bvh";
+
 __include "giha/geometry/quantity";
 __include "giha/geometry/dart";
 __include "giha/geometry/geometry";
