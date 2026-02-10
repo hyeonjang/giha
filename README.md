@@ -1,11 +1,18 @@
 # giha
 
-`giha` is a playground for experimenting with dart based geometry processing on [Slang](https://github.com/shader-slang/slang). The project offers:
+`giha` is a playground for experimenting with dart-based geometry processing on [Slang](https://github.com/shader-slang/slang).
 
-- A header-only C++20 library with utilities for building dart maps from sparse incidences (`include/giha/geometry`), lightweight linear algebra helpers, and Slang integration helpers.
-- Slang modules (`module/giha`) that mirror the CPU data structures so kernels can traverse and mutate dart maps directly on the GPU.
-- Sample compute kernels (`module/giha_kernel`) such as orbit collection and Loop-style subdivision, plus a tiny runtime layer that bridges the kernels to [slang-rhi](https://github.com/shader-slang/slang-rhi).
-- Optional tests and sample meshes (`test/resource`) to exercise the data structures.
+## Features
+
+- **Dart-based combinatorial model** 
+    - A relaxed-condition half-edge structure allowing multiple edges (`include/giha/geometry/dart.h`).
+    - Converts sparse face-vertex incidence lists into a canonical dart structure via a SpGEMM-like stitch phase (`include/giha/geometry`).
+- **Reference kernels** — Runnable compute-kernel geometry-processing algorithms.
+  - [x] Dart-based structure for connectivity and induced maps
+  - [x] Orbit collector topology query
+  - [x] Loop-like subdivision
+  - [ ] Delaunay triangulation pass
+  - [ ] Spatial acceleration construction and its query (e.g., BVH, KD-tree)
 
 ## Repository layout
 
@@ -19,10 +26,10 @@ cmake/              # Helper scripts (e.g., DownloadGithubRelease.cmake)
 
 Key building blocks:
 
-- `giha::DartMap` (`include/giha/geometry/dart.h`) converts sparse face-vertex data into a dart/half-edge structure and exposes helpers for traversing orbits.
 - `module/giha/geometry/dart.slang` mirrors the dart map on the GPU and adds mutable/atomic variants suited for lock-free edits.
-- `module/giha_kernel/orbit.slang`, `module/giha_kernel/subdivide.slang`, … demonstrate how to launch GPU kernels against the combinatorial model.
-- `include/giha/geometry/adapters/slang-rhi/` hosts the descriptors that bind dart buffers into slang-rhi pipelines.
+- `module/giha_kernel`, … Compute kernels for geometry processing against the combinatorial model.
+- `include/giha/slang` hosts the slang compile binder.
+- `include/giha/slang/adapters` hosts descriptors that bind dart buffers into RHI pipelines (easy to use or for test).
 
 ## Build requirements
 
