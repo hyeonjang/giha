@@ -1,6 +1,6 @@
 # giha
 
-`giha` is a playground for experimenting with dart-based geometry processing on [Slang](https://github.com/shader-slang/slang).
+`giha` is a parallel algorithm testbed for experimenting with dart-based geometry processing on [Slang](https://github.com/shader-slang/slang).
 The project focuses on implementing cyclic permutations of connectivity representations for geometry processing workflows.
 
 ## Features
